@@ -42,6 +42,7 @@ export interface ItemData {
   globalHeaders?: Pair[];
   swaggerEndpoints?: Endpoint[];
   description?: string;
+  sourceUrl?: string;
   spec?: unknown;
   importSpec?: string;
 }

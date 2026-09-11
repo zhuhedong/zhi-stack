@@ -97,7 +97,7 @@ function App() {
   }, [query]);
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(''), 7000);
+    const timer = setTimeout(() => setToast(null), 7000);
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => {
