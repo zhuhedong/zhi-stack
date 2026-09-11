@@ -47,6 +47,7 @@ const steps = [
   ['insights and maintenance CLI', node, ['scripts/insights-integration.mjs']],
   ['legacy local migration', node, ['scripts/storage-migration.mjs']],
   ['legacy R2 migration', node, ['scripts/storage-migration.mjs', '--r2']],
+  ['Docker smoke runner', node, ['--test', 'scripts/docker-smoke.test.mjs']],
 ];
 if (process.argv.includes('--docker')) steps.push(['Docker image smoke', node, ['scripts/docker-smoke.mjs']]);
 if (process.platform === 'win32')

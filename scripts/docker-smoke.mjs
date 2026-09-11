@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { maintain } from './maintenance.mjs';
+import { waitForContainer, restartContainer } from './docker-readiness.mjs';
 const id = randomUUID().replaceAll('-', '');
 const prefix = 'infohub-smoke-' + id;
 const image = prefix + ':test';
@@ -22,18 +23,9 @@ function docker(args, required = true) {
   });
   if (required && (result.error || result.status !== 0))
     throw new Error(result.error?.message || result.stderr || 'Docker failed.');
-  return result.stdout?.trim() || '';
-}
-async function ready(base) {
-  const until = Date.now() + 90000;
-  while (Date.now() < until) {
-    try {
-      return await maintain({ command: 'status', base });
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-  }
-  throw new Error('Container did not become ready.');
+  return args[0] === 'logs'
+    ? [result.stdout, result.stderr].filter(Boolean).join('\n').trim()
+    : result.stdout?.trim() || '';
 }
 async function call(base, path, token, body) {
   const response = await fetch(base + '/api' + path, {
@@ -66,9 +58,6 @@ function start(name, database) {
     '127.0.0.1::3210',
     image,
   ]);
-  const address = docker(['port', name, '3210/tcp']);
-  assert.match(address, /^127\.0\.0\.1:\d+$/);
-  return 'http://' + address;
 }
 try {
   docker(['version']);
@@ -94,8 +83,8 @@ try {
     if (Date.now() > until) throw new Error('Container PostgreSQL did not start.');
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  const base = start(app, 'infohub');
-  const health = await ready(base);
+  start(app, 'infohub');
+  let { base, health } = await waitForContainer(docker, app);
   const token = (await call(base, '/auth/setup', '', { password })).token;
   const asset = await call(base, '/items', token, {
     kind: 'knowledge',
@@ -103,8 +92,7 @@ try {
     data: { content: '容器重启与恢复记录' },
   });
   assert.equal(docker(['exec', app, 'id', '-u']), '10001');
-  docker(['restart', app]);
-  await ready(base);
+  ({ base } = await restartContainer(docker, app));
   const relogin = (await call(base, '/auth/login', '', { password })).token;
   assert.equal((await call(base, '/items/' + asset.id, relogin)).title, asset.title);
   const folder = resolve('.local/docker-tests', id);
@@ -116,8 +104,8 @@ try {
     password,
   });
   docker(['exec', pg, 'psql', '-U', 'infohub', '-d', 'postgres', '-c', 'CREATE DATABASE restored']);
-  const recoveryBase = start(restored, 'restored');
-  await ready(recoveryBase);
+  start(restored, 'restored');
+  const { base: recoveryBase } = await waitForContainer(docker, restored);
   await maintain({
     command: 'restore',
     base: recoveryBase,

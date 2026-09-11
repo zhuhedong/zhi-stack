@@ -18,6 +18,7 @@
     "test:api-workspace": "node scripts/api-workspace-integration.mjs",
     "test:background": "node scripts/background-integration.mjs",
     "test:insights": "node scripts/insights-integration.mjs",
+    "test:docker-smoke": "node --test scripts/docker-smoke.test.mjs",
     "verify:release": "node scripts/verify-release.mjs",
     "test:request": "node --experimental-strip-types --test scripts/request.test.ts",
     "test:ui": "vitest run scripts/ui.test.tsx",
