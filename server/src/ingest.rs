@@ -31,11 +31,12 @@ pub async fn collect(state: &AppState, url: &str, kind: &str) -> Result<Collecte
     if !["", "knowledge", "repo", "credential"].contains(&kind) {
         return Err(AppError::bad("未知收录类型"));
     }
-    let parsed = parse_url(url)?;
+    let url = canonical_source_url(url)?;
+    let parsed = parse_url(&url)?;
     if (kind.is_empty() && is_github_host(parsed.host_str())) || kind == "repo" {
-        return github(state, url).await;
+        return github(state, &url).await;
     }
-    let fetched = state.network.get(url).await?;
+    let fetched = state.network.get(&url).await?;
     let text = String::from_utf8(fetched.bytes).map_err(|_| {
         AppError::bad("页面不是 UTF-8 文本，请使用 UTF-8 导出文件或 Markdown 手动收录")
     })?;
@@ -53,6 +54,9 @@ pub async fn collect(state: &AppState, url: &str, kind: &str) -> Result<Collecte
             warnings: vec![],
         });
     }
+    if scrape_blocked(fetched.url.as_str(), "", &text) {
+        return Err(blocked_scrape_error());
+    }
     if kind == "credential" || (kind.is_empty() && looks_like_swagger_ui(&text)) {
         if let Some(collected) =
             discover_swagger(state, &fetched.url, &text, swagger_discovery_required(kind)).await?
@@ -66,6 +70,36 @@ pub async fn collect(state: &AppState, url: &str, kind: &str) -> Result<Collecte
         }
     }
     article(state, fetched.url.as_str(), &text).await
+}
+
+pub(crate) fn canonical_source_url(url: &str) -> Result<String> {
+    let mut parsed = parse_url(url)?;
+    if parsed
+        .host_str()
+        .is_some_and(|h| h.eq_ignore_ascii_case("mp.weixin.qq.com"))
+    {
+        parsed.set_query(None);
+        parsed.set_fragment(None);
+    }
+    Ok(parsed.to_string())
+}
+
+pub(crate) fn scrape_blocked(url: &str, title: &str, html: &str) -> bool {
+    let lower_url = url.to_ascii_lowercase();
+    title.contains("环境异常")
+        || title.contains("安全验证")
+        || title.contains("Just a moment")
+        || title.contains("Access Denied")
+        || title.contains("验证码")
+        || title.trim() == "未知错误"
+        || lower_url.contains("appmsgcaptcha")
+        || lower_url.contains("wappoc")
+        || html.contains("失效的验证页面")
+        || html.contains("你暂无权限查看此页面内容")
+}
+
+fn blocked_scrape_error() -> AppError {
+    AppError::bad("目标站点要求登录或人机验证，无法直接采集。可将正文粘贴为 Markdown 收录")
 }
 
 pub(crate) fn is_github_host(host: Option<&str>) -> bool {
@@ -197,19 +231,8 @@ async fn article(state: &AppState, url: &str, text: &str) -> Result<Collected> {
         .into_iter()
         .find(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "未命名文章".into());
-        if [
-            "环境异常",
-            "安全验证",
-            "Just a moment",
-            "Access Denied",
-            "验证码",
-        ]
-        .iter()
-        .any(|s| title.contains(s))
-        {
-            return Err(AppError::bad(
-                "目标站点要求登录或人机验证，无法直接采集。可将正文粘贴为 Markdown 收录",
-            ));
+        if scrape_blocked(url, &title, text) {
+            return Err(blocked_scrape_error());
         }
         let content = [
             "#js_content",
@@ -884,6 +907,30 @@ pub fn openapi(doc: &Value, source: &str) -> Result<ItemInput> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn wechat_urls_drop_tracking_query_and_captcha_pages_are_blocked() {
+        assert_eq!(
+            canonical_source_url(
+                "https://mp.weixin.qq.com/s/KW2jUE8RUV3xX4nZ6F5Rqg?scene=1&click_id=1192932897"
+            )
+            .unwrap(),
+            "https://mp.weixin.qq.com/s/KW2jUE8RUV3xX4nZ6F5Rqg"
+        );
+        assert_eq!(
+            canonical_source_url("https://example.com/post?utm=1").unwrap(),
+            "https://example.com/post?utm=1"
+        );
+        assert!(!scrape_blocked(
+            "https://example.com/a",
+            "排查未知错误",
+            "<div id=\"js_content\">enough article text for ingest</div>"
+        ));
+        assert!(scrape_blocked(
+            "https://mp.weixin.qq.com/mp/wappoc_appmsgcaptcha?poc_token=x",
+            "未知错误",
+            "失效的验证页面"
+        ));
+    }
     #[test]
     fn operation_servers_override_path_and_root_and_expand_variables() {
         let doc = json!({"openapi":"3.0.3","servers":[{"url":"/root"}],"paths":{

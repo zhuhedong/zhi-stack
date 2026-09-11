@@ -12,6 +12,8 @@ use std::{
 use url::Url;
 
 pub const MAX_DOCUMENT: usize = 8 * 1024 * 1024;
+/// WeChat and other publishers reject library User-Agents with a captcha interstitial.
+pub const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 #[derive(Clone, Default)]
 pub struct Network {
     pub allowed_private_hosts: Vec<String>,
@@ -108,7 +110,7 @@ impl Network {
                 .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_secs(10))
                 .timeout(Duration::from_secs(30))
-                .user_agent("InfoHub/0.1 (+personal-archive)")
+                .user_agent(BROWSER_UA)
                 .resolve_to_addrs(&host, &addresses)
                 .build()?;
             let mut request = client.request(method.clone(), url.clone());
@@ -250,5 +252,6 @@ mod tests {
         assert!(is_public("8.8.8.8".parse().unwrap()));
         assert!(parse_url("file:///etc/passwd").is_err());
         assert!(parse_url("https://user:pass@example.com").is_err());
+        assert!(BROWSER_UA.starts_with("Mozilla/5.0"));
     }
 }
