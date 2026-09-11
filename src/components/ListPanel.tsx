@@ -19,6 +19,7 @@ export function ListPanel({
   onGlobal,
   onMore,
   onRetry,
+  onMenu,
 }: {
   pillar: Pillar;
   items: Item[];
@@ -37,6 +38,7 @@ export function ListPanel({
   onGlobal: (v: boolean) => void;
   onMore: () => void;
   onRetry: () => void;
+  onMenu: (item: Item, x: number, y: number) => void;
 }) {
   const options = { ...categories[pillar] };
   if (pillar === 'repo')
@@ -98,6 +100,10 @@ export function ListPanel({
             key={item.id}
             className={'list-item ' + (selectedId === item.id ? 'selected' : '')}
             onClick={() => onSelect(item)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onMenu(item, event.clientX, event.clientY);
+            }}
             aria-pressed={selectedId === item.id}
           >
             <div className="list-item-meta">

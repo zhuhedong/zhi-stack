@@ -9,8 +9,10 @@ import { ItemEditor } from './components/ItemEditor';
 import { IngestModal } from './components/IngestModal';
 import { Modal } from './components/Modal';
 import { AppFrame } from './components/AppFrame';
+import { ContextMenu, type MenuCommand } from './components/ContextMenu';
+import { openSource } from './components/SourceLink';
 import { isDesktop } from './lib/platform';
-import { api, errorMessage, saveItem, setToken } from './lib/api';
+import { api, copyText, errorMessage, saveItem, setToken } from './lib/api';
 import type { Item, ListResult, Pillar } from './types';
 
 function App() {
@@ -37,6 +39,9 @@ function App() {
   const [viewEpoch, setViewEpoch] = useState(0);
   const [busy, setBusy] = useState(false);
   const [modal, setModal] = useState<'add' | 'edit' | 'ingest' | 'unlock' | 'delete' | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
+  const [editItem, setEditItem] = useState<Item | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Item | null>(null);
   const [ingestUrl, setIngestUrl] = useState('');
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [password, setPassword] = useState('');
@@ -90,6 +95,7 @@ function App() {
     if (selectedKindRef.current === 'credential') {
       dirtyRef.current = false;
     }
+    setContextMenu(null);
   }, []);
   useEffect(() => {
     const timer = setTimeout(() => setSearch(query), 220);
@@ -392,14 +398,38 @@ function App() {
     clearDraft();
     setModal(null);
     saved(updated);
+    setEditItem(null);
     setViewEpoch((v) => v + 1);
     setDetailTick((v) => v + 1);
   }
   async function refreshItem() {
     if (!item || !mayLeave()) return;
+    await refreshEntry(item);
+  }
+  async function star() {
+    if (!item) return;
+    await starEntry(item);
+  }
+  async function fullItem(entry: Item) {
+    return api<Item>('/items/' + entry.id);
+  }
+  async function starEntry(entry: Item) {
     setBusy(true);
     try {
-      const result = await api<{ item: Item; warnings: string[] }>('/items/' + item.id + '/refresh', {
+      const full = await fullItem(entry);
+      const updated = await saveItem({ ...full, favorite: !full.favorite }, full.id);
+      saved(updated);
+    } catch (e) {
+      notify(errorMessage(e), true);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function refreshEntry(entry: Item) {
+    if (selected?.id !== entry.id && !mayLeave()) return;
+    setBusy(true);
+    try {
+      const result = await api<{ item: Item; warnings: string[] }>('/items/' + entry.id + '/refresh', {
         method: 'POST',
       });
       saved(result.item);
@@ -414,16 +444,77 @@ function App() {
       setBusy(false);
     }
   }
-  async function star() {
-    if (!item) return;
-    setBusy(true);
+  function listCommands(entry: Item): MenuCommand[] {
+    const lockedCred = entry.kind === 'credential' && !unlocked;
+    const commands: MenuCommand[] = [];
+    if (entry.url) commands.push({ id: 'open', label: '打开来源' });
+    commands.push({ id: 'copy-title', label: '复制标题' });
+    if (entry.url) commands.push({ id: 'copy-url', label: '复制链接' });
+    if (lockedCred) {
+      commands.push({ id: 'unlock', label: '解锁密码库' });
+      return commands;
+    }
+    commands.push({ id: 'star', label: entry.favorite ? '取消收藏' : '收藏' });
+    if (entry.url) commands.push({ id: 'refresh', label: '重新同步' });
+    commands.push({ id: 'edit', label: '编辑属性' });
+    commands.push({ id: 'delete', label: '删除', danger: true });
+    return commands;
+  }
+  function openListMenu(entry: Item, x: number, y: number) {
+    if (selected?.id !== entry.id && !mayLeave()) return;
+    if (selected?.id !== entry.id) {
+      clearDraft();
+      setSelected({ id: entry.id, kind: entry.kind });
+    }
+    setContextMenu({ item: entry, x, y });
+  }
+  async function runListCommand(id: string) {
+    const entry = contextMenu?.item;
+    setContextMenu(null);
+    if (!entry) return;
     try {
-      const updated = await saveItem({ ...item, favorite: !item.favorite }, item.id);
-      saved(updated);
+      if (id === 'open' && entry.url) {
+        await openSource(entry.url);
+        return;
+      }
+      if (id === 'copy-title') {
+        await copyText(entry.title);
+        notify('标题已复制');
+        return;
+      }
+      if (id === 'copy-url' && entry.url) {
+        await copyText(entry.url);
+        notify('链接已复制');
+        return;
+      }
+      if (id === 'unlock') {
+        showModal('unlock');
+        return;
+      }
+      if (entry.kind === 'credential' && !unlocked) return;
+      if (id === 'star') {
+        await starEntry(entry);
+        return;
+      }
+      if (id === 'refresh') {
+        await refreshEntry(entry);
+        return;
+      }
+      if (id === 'edit') {
+        if (selected?.id !== entry.id && !mayLeave()) return;
+        const full = await fullItem(entry);
+        setEditItem(full);
+        setSelected({ id: full.id, kind: full.kind });
+        setItem(full);
+        showModal('edit');
+        return;
+      }
+      if (id === 'delete') {
+        setPendingDelete(entry);
+        showModal('delete');
+      }
     } catch (e) {
       notify(errorMessage(e), true);
-    } finally {
-      setBusy(false);
     }
   }
   async function lock() {
@@ -474,16 +565,20 @@ function App() {
     }
   }
   async function remove() {
-    if (!item) return;
+    const target = pendingDelete || item;
+    if (!target) return;
     setBusy(true);
     setModalError('');
     try {
-      await api('/items/' + item.id, { method: 'DELETE' });
+      await api('/items/' + target.id, { method: 'DELETE' });
       clearDraft();
       setModal(null);
-      setSelected(null);
-      setItem(null);
-      setMobileDetail(false);
+      setPendingDelete(null);
+      if (selected?.id === target.id) {
+        setSelected(null);
+        setItem(null);
+        setMobileDetail(false);
+      }
       reload();
     } catch (e) {
       setModalError(errorMessage(e));
@@ -562,6 +657,7 @@ function App() {
           onGlobal={setGlobal}
           onMore={() => setLimit((v) => v + 100)}
           onRetry={reload}
+          onMenu={openListMenu}
         />
         <Workspace
           item={item}
@@ -572,9 +668,15 @@ function App() {
           busy={busy}
           viewEpoch={viewEpoch}
           onEdit={() => {
-            if (mayLeave()) showModal('edit');
+            if (mayLeave()) {
+              setEditItem(null);
+              showModal('edit');
+            }
           }}
-          onDelete={() => showModal('delete')}
+          onDelete={() => {
+            setPendingDelete(null);
+            showModal('delete');
+          }}
           onRefresh={() => void refreshItem()}
           onStar={() => void star()}
           onBack={() => setMobileDetail(false)}
@@ -585,14 +687,17 @@ function App() {
           notify={notify}
         />
       </div>
-      {(modal === 'add' || (modal === 'edit' && item)) && (
+      {(modal === 'add' || (modal === 'edit' && (editItem || item))) && (
         <ItemEditor
-          item={modal === 'edit' ? item! : undefined}
+          item={modal === 'edit' ? editItem || item! : undefined}
           pillar={pillar}
           unlocked={unlocked}
           onDraft={modalDraft}
           projects={[...new Set(result.dimensions.map((d) => d.project).filter(Boolean))]}
-          onClose={() => setModal(null)}
+          onClose={() => {
+            setModal(null);
+            setEditItem(null);
+          }}
           onSaved={modal === 'edit' ? edited : created}
         />
       )}
@@ -656,15 +761,18 @@ function App() {
           </form>
         </Modal>
       )}
-      {modal === 'delete' && item && (
+      {modal === 'delete' && (pendingDelete || item) && (
         <Modal
           title="删除资产"
           onClose={() => {
-            if (!busy) setModal(null);
+            if (!busy) {
+              setModal(null);
+              setPendingDelete(null);
+            }
           }}
         >
           <div className="modal-body">
-            <p>永久删除「{item.title}」及其离线图片和附件？</p>
+            <p>永久删除「{(pendingDelete || item)!.title}」及其离线图片和附件？</p>
             <p className="muted">此操作无法撤销。</p>
             {modalError && (
               <div className="error" role="alert">
@@ -673,7 +781,13 @@ function App() {
             )}
           </div>
           <div className="modal-foot">
-            <button disabled={busy} onClick={() => setModal(null)}>
+            <button
+              disabled={busy}
+              onClick={() => {
+                setModal(null);
+                setPendingDelete(null);
+              }}
+            >
               取消
             </button>
             <button className="danger" disabled={busy} onClick={() => void remove()}>
@@ -681,6 +795,15 @@ function App() {
             </button>
           </div>
         </Modal>
+      )}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          commands={listCommands(contextMenu.item)}
+          onPick={(id) => void runListCommand(id)}
+          onClose={() => setContextMenu(null)}
+        />
       )}
       {toast && (
         <div

@@ -512,6 +512,33 @@ svg {
 .list-item:active {
   transform: none;
 }
+.context-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 172px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-panel);
+  box-shadow: var(--shadow-sm);
+}
+.context-menu button {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 6px;
+  background: var(--color-transparent);
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.context-menu button:hover:not(:disabled) {
+  background: var(--color-hover);
+}
+.context-menu button:active {
+  transform: none;
+}
 .list-item-meta {
   display: flex;
   justify-content: space-between;

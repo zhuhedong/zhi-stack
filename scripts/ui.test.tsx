@@ -452,6 +452,58 @@ test('custom credential fields and tags are saved, and editing an existing item 
   expect(host.querySelector('select')?.disabled).toBe(true);
 });
 
+test('list item context menu copies the source URL and favorites via a full item save', async () => {
+  await render(<App />);
+  await fill(input('主密码'), 'test-password');
+  await submit();
+  await click('知识与文章1');
+  await act(async () =>
+    host.querySelector('.list-item')!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 80 }),
+    ),
+  );
+  expect(document.querySelector('[role=menu]')?.textContent).toContain('复制链接');
+  expect(document.querySelector('[role=menu]')?.textContent).toContain('重新同步');
+  mocks.copyText.mockResolvedValue(undefined);
+  await act(async () =>
+    [...document.querySelectorAll<HTMLButtonElement>('[role=menu] button')]
+      .find((b) => b.textContent?.trim() === '复制链接')!
+      .click(),
+  );
+  expect(mocks.copyText).toHaveBeenCalledWith('https://example.com/articles/start');
+  expect(document.querySelector('[role=menu]')).toBeNull();
+  await act(async () =>
+    host.querySelector('.list-item')!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 80 }),
+    ),
+  );
+  mocks.saveItem.mockResolvedValue({ ...item(), favorite: true, revision: 2 });
+  await act(async () =>
+    [...document.querySelectorAll<HTMLButtonElement>('[role=menu] button')]
+      .find((b) => b.textContent?.trim() === '收藏')!
+      .click(),
+  );
+  expect(mocks.saveItem.mock.lastCall![0].data.content).toBe('initial');
+  expect(mocks.saveItem.mock.lastCall![0].favorite).toBe(true);
+});
+
+test('locked credential context menu offers unlock instead of destructive actions', async () => {
+  await render(<App />);
+  await fill(input('主密码'), 'test-password');
+  await submit();
+  await act(async () => window.dispatchEvent(new Event('infohub:locked')));
+  await act(async () =>
+    host.querySelector('.list-item')!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 40 }),
+    ),
+  );
+  const menu = document.querySelector('[role=menu]')?.textContent || '';
+  expect(menu).toContain('解锁密码库');
+  expect(menu).toContain('复制标题');
+  expect(menu).not.toContain('删除');
+  expect(menu).not.toContain('重新同步');
+});
+
 test('repository canvas opens on README rather than release notes', async () => {
   const value = {
     ...item(),
