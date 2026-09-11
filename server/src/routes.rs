@@ -620,6 +620,7 @@ pub async fn ingest(
     let item = insert(&mut tx, id, &mut collected.input, &auth).await?;
     persist_images(&mut tx, id, &collected).await?;
     tx.commit().await?;
+    ingest_linked_repos(&state, &auth, &item, &mut collected.warnings).await;
     Ok((
         StatusCode::CREATED,
         Json(json!({"item":item,"warnings":collected.warnings})),
@@ -688,7 +689,56 @@ pub async fn refresh(
     persist_images(&mut tx, id, &collected).await?;
     tx.commit().await?;
     state.file_cleanup.notify_one();
+    ingest_linked_repos(&state, &auth, &item, &mut collected.warnings).await;
     Ok(Json(json!({"item":item,"warnings":collected.warnings})))
+}
+
+async fn ingest_linked_repos(state: &AppState, auth: &Auth, item: &Item, warnings: &mut Vec<String>) {
+    if item.kind != "knowledge" {
+        return;
+    }
+    let content = item.data["content"].as_str().unwrap_or_default();
+    for url in ingestion::github_repo_urls(&format!("{}\n{content}", item.url)) {
+        match persist_linked_repo(state, auth, item, &url).await {
+            Ok(Some(title)) => warnings.push(format!("已同时收录 GitHub 项目 {title}")),
+            Ok(None) => {}
+            Err(error) => warnings.push(format!("文中 GitHub 项目 {url} 未能收录：{error}")),
+        }
+    }
+}
+
+async fn persist_linked_repo(
+    state: &AppState,
+    auth: &Auth,
+    article: &Item,
+    url: &str,
+) -> Result<Option<String>> {
+    let exists: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM items WHERE kind='repo' AND url=$1")
+            .bind(url)
+            .fetch_optional(&state.db)
+            .await?;
+    if exists.is_some() {
+        return Ok(None);
+    }
+    let mut collected = ingestion::collect(state, url, "repo").await?;
+    collected.input.project = article.project.clone();
+    collected.input.tags = article.tags.clone();
+    collected.input.validate()?;
+    let mut tx = state.db.begin().await?;
+    let saved = match insert(&mut tx, Uuid::new_v4(), &mut collected.input, auth).await {
+        Ok(item) => item,
+        Err(error) if error.0 == StatusCode::CONFLICT => {
+            let _ = tx.rollback().await;
+            return Ok(None);
+        }
+        Err(error) => {
+            let _ = tx.rollback().await;
+            return Err(error);
+        }
+    };
+    tx.commit().await?;
+    Ok(Some(saved.title))
 }
 
 fn preserve_sync_data(previous: &Item, collected: &mut Collected) {

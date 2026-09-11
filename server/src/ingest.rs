@@ -102,6 +102,73 @@ fn blocked_scrape_error() -> AppError {
     AppError::bad("目标站点要求登录或人机验证，无法直接采集。可将正文粘贴为 Markdown 收录")
 }
 
+const MAX_LINKED_REPOS: usize = 5;
+const GITHUB_SKIP_OWNERS: &[&str] = &[
+    "about",
+    "account",
+    "apps",
+    "collections",
+    "codespaces",
+    "customer-stories",
+    "enterprises",
+    "events",
+    "explore",
+    "features",
+    "gist",
+    "github",
+    "issues",
+    "login",
+    "marketplace",
+    "new",
+    "notifications",
+    "org",
+    "organizations",
+    "orgs",
+    "pricing",
+    "pulls",
+    "readme",
+    "search",
+    "security",
+    "settings",
+    "signup",
+    "site",
+    "sponsors",
+    "stars",
+    "topics",
+    "trending",
+    "users",
+    "watching",
+];
+
+pub(crate) fn github_repo_urls(text: &str) -> Vec<String> {
+    let pattern = regex::Regex::new(
+        r"(?i)(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)",
+    )
+    .expect("github repo URL pattern");
+    let mut urls = Vec::new();
+    for cap in pattern.captures_iter(text) {
+        let owner = &cap[1];
+        if GITHUB_SKIP_OWNERS
+            .iter()
+            .any(|skip| owner.eq_ignore_ascii_case(skip))
+        {
+            continue;
+        }
+        let repo = cap[2].trim_end_matches(".git");
+        if repo.is_empty() || repo == "." || repo == ".." {
+            continue;
+        }
+        let url = format!("https://github.com/{owner}/{repo}");
+        if !urls.iter().any(|existing| existing == &url) {
+            urls.push(url);
+        }
+        if urls.len() >= MAX_LINKED_REPOS {
+            break;
+        }
+    }
+    urls
+}
+
 pub(crate) fn is_github_host(host: Option<&str>) -> bool {
     host.is_some_and(|h| {
         let h = h.trim_end_matches('.');
@@ -930,6 +997,21 @@ mod tests {
             "未知错误",
             "失效的验证页面"
         ));
+    }
+    #[test]
+    fn article_body_github_links_collapse_to_canonical_repos() {
+        let text = "项目地址：https://github.com/ddosi/PacketLens\n\
+            镜像 https://www.github.com/ddosi/PacketLens.git/blob/main/README.md\n\
+            以及 github.com/foo/bar 和 https://github.com/features/actions\n\
+            重复 https://github.com/ddosi/PacketLens?tab=readme-ov-file";
+        assert_eq!(
+            github_repo_urls(text),
+            vec![
+                "https://github.com/ddosi/PacketLens".to_string(),
+                "https://github.com/foo/bar".to_string(),
+            ]
+        );
+        assert!(github_repo_urls("https://github.com/settings/profile").is_empty());
     }
     #[test]
     fn operation_servers_override_path_and_root_and_expand_variables() {
