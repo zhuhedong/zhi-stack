@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>InfoHub 历史配色 — Dark Mode（已停用）</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    .swatch-card {
+      transition: all 0.2s ease;
+    }
+    .swatch-card:hover {
+      transform: translateY(-2px);
+    }
+  </style>
+</head>
+<body class="bg-transparent antialiased p-0 md:p-4">
+  <aside style="position:relative;z-index:100;padding:12px 16px;margin-bottom:16px;border:1px solid #0000001a;border-radius:8px;background:#f5f5f7;color:#1d1d1f;font:12px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+    <strong>历史方案，已停用。</strong> 此页保留旧深色配色，不作为实现依据。当前采用 <a href="Style_Design.md" style="color:#007aff">Apple Light 设计规范</a>，查看 <a href="infohub_apple_light.html" style="color:#007aff">当前亮色原型</a>。
+  </aside>
+  <div class="bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded-xl p-6 shadow-sm w-full mx-auto font-sans">
+    
+    <div class="mb-8 border-b border-[var(--border)] pb-6">
+      <h2 class="text-[var(--foreground)] font-semibold text-2xl mb-2 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 0 1-8.6-6.4.7.7 0 0 1 .6-.9c1.4-.2 2.6-.8 3.5-1.7s1.5-2.1 1.7-3.5a.7.7 0 0 1 .9-.6 9 9 0 0 1 6.4 8.6.7.7 0 0 1-.9.6 9 9 0 0 1-3.6-4.1"/></svg>
+        InfoHub 设计色彩规范 (Dark Mode)
+      </h2>
+      <p class="text-[var(--muted-foreground)] text-sm max-w-2xl leading-relaxed">
+        抛弃浮夸的“AI渐变风”，基于 <strong>Linear / Raycast / DBX</strong> 的高阶极客美学打造。该体系采用极低饱和度的冷灰黑为基调，搭配微差层级表现深度，确保高密度数据展示下的极致沉浸感和护眼体验。
+      </p>
+    </div>
+
+    <div class="space-y-10">
+      
+      <!-- Surfaces -->
+      <section>
+        <h3 class="text-sm font-semibold text-[var(--foreground)] mb-4 tracking-wider flex items-center gap-2 uppercase">
+          <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+          背景与表面材质 (Surfaces)
+        </h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          
+          <div class="swatch-card flex flex-col rounded-lg overflow-hidden border border-[#24242c] bg-[#16161c]">
+            <div class="h-24 w-full bg-[#121215] border-b border-[#24242c]"></div>
+            <div class="p-3">
+              <div class="font-mono text-xs font-bold text-[#c9ccd0] mb-1">#121215</div>
+              <div class="text-[11px] text-[#86909c]">App Background<br/>最底层应用背景</div>
+            </div>
+          </div>
+          
+          <div class="swatch-card flex flex-col rounded-lg overflow-hidden border border-[#24242c] bg-[#16161c]">
+            <div class="h-24 w-full bg-[#141418] border-b border-[#24242c]"></div>
+            <div class="p-3">
+              <div class="font-mono text-xs font-bold text-[#c9ccd0] mb-1">#141418</div>
+              <div class="text-[11px] text-[#86909c]">Sidebar / Nav<br/>主侧边栏与导航</div>
+            </div>
+          </div>
+
+          <div class="swatch-card flex flex-col rounded-lg overflow-hidden border border-[#24242c] bg-[#16161c]">
+            <div class="h-24 w-full bg-[#151519] border-b border-[#24242c]"></div>
+            <div class="p-3">
+              <div class="font-mono text-xs font-bold text-[#c9ccd0] mb-1">#151519</div>
+              <div class="text-[11px] text-[#86909c]">List / Panel<br/>二级列表、分类底板</div>
+            </div>
+          </div>
+
+          <div class="swatch-card flex flex-col rounded-lg overflow-hidden border border-[#24242c] bg-[#16161c]">
+            <div class="h-24 w-full bg-[#16161c] border-b border-[#24242c]"></div>
+            <div class="p-3">
+              <div class="font-mono text-xs font-bold text-[#c9ccd0] mb-1">#16161c</div>
+              <div class="text-[11px] text-[#86909c]">Card / Workspace<br/>卡片/主工作区/编辑器</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Borders & Dividers -->
+      <section>
+        <h3 class="text-sm font-semibold text-[var(--foreground)] mb-4 tracking-wider flex items-center gap-2 uppercase">
+          <span class="w-2 h-2 rounded-full bg-slate-600"></span>
+          边框与线 (Borders & Dividers)
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          
+          <div class="swatch-card flex items-center rounded-lg border border-[var(--border)] bg-[#121215] p-3 gap-4">
+            <div class="h-10 w-10 rounded-md border-2 border-[#222228] bg-[#151519]"></div>
+            <div>
+              <div class="font-mono text-xs font-bold text-[#c9ccd0]">#222228</div>
+              <div class="text-[11px] text-[#86909c]">弱分割线 (列表内部项目划分)</div>
+            </div>
+          </div>
+
+          <div class="swatch-card flex items-center rounded-lg border border-[var(--border)] bg-[#121215] p-3 gap-4">
+            <div class="h-10 w-10 rounded-md border-2 border-[#24242c] bg-[#151519]"></div>
+            <div>
+              <div class="font-mono text-xs font-bold text-[#c9ccd0]">#24242c</div>
+              <div class="text-[11px] text-[#86909c]">标准边框 (容器、卡片外沿)</div>
+            </div>
+          </div>
+
+          <div class="swatch-card flex items-center rounded-lg border border-[var(--border)] bg-[#121215] p-3 gap-4">
+            <div class="h-10 w-10 rounded-md border-2 border-[#262630] bg-[#151519]"></div>
+            <div>
+              <div class="font-mono text-xs font-bold text-[#c9ccd0]">#262630</div>
+              <div class="text-[11px] text-[#86909c]">悬停/焦点 (输入框激活、卡片Hover)</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Typography -->
+      <section>
+        <h3 class="text-sm font-semibold text-[var(--foreground)] mb-4 tracking-wider flex items-center gap-2 uppercase">
+          <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+          字体与排版 (Typography)
+        </h3>
+        <div class="bg-[#16161c] border border-[#24242c] rounded-lg p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <div>
+            <div class="text-3xl font-semibold text-[#e2e8f0] mb-1">#e2e8f0</div>
+            <div class="text-[11px] text-[#86909c] mb-3">High Contrast / 标题及重要状态</div>
+            <p class="text-[#e2e8f0] text-sm">数据库连接成功 / REST API 配置概览</p>
+          </div>
+
+          <div>
+            <div class="text-3xl font-medium text-[#c9ccd0] mb-1">#c9ccd0</div>
+            <div class="text-[11px] text-[#86909c] mb-3">Primary / 主要正文 (护眼冷灰)</div>
+            <p class="text-[#c9ccd0] text-sm">微信公众号文章正文内容，或代码编辑器内的主要逻辑展示区。</p>
+          </div>
+
+          <div>
+            <div class="text-3xl font-normal text-[#86909c] mb-1">#86909c</div>
+            <div class="text-[11px] text-[#86909c] mb-3">Secondary / 辅助说明信息</div>
+            <p class="text-[#86909c] text-sm">更新于 2026-09-09 • 包含 15 张离线图片</p>
+          </div>
+
+          <div>
+            <div class="text-3xl font-normal text-[#555866] mb-1">#555866</div>
+            <div class="text-[11px] text-[#86909c] mb-3">Muted / 禁用态或占位符</div>
+            <p class="text-[#555866] text-sm">请输入 MySQL 连接密码... (Placeholder)</p>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Brand & Accents -->
+      <section>
+        <h3 class="text-sm font-semibold text-[var(--foreground)] mb-4 tracking-wider flex items-center gap-2 uppercase">
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+          品牌色与高亮 (Accents & Status)
+        </h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          
+          <div class="swatch-card flex flex-col rounded-lg overflow-hidden border border-[#24242c] bg-[#16161c]">
+            <div class="h-24 w-full bg-[#3b82f6] flex items-center justify-center">
+              <span class="text-white/80 text-xs font-medium">Primary</span>
+            </div>
+            <div class="p-3">
+              <div class="font-mono text-xs font-bold text-[#c9ccd0] mb-1">#3b82f6</div>
+              <div class="text-[11px] text-[#86909c]">Developer Blue<br/>发送请求 / 主操作按钮</div>
+            </div>
+          </div>
+
+          <div class="swatch-card flex flex-col rounded-lg overflow-hidden border border-[#24242c] bg-[#16161c]">
+            <div class="h-24 w-full bg-[#07c160] flex items-center justify-center">
+              <span class="text-white/80 text-xs font-medium">Knowledge</span>
+            </div>
+            <div class="p-3">
+              <div class="font-mono text-xs font-bold text-[#c9ccd0] mb-1">#07c160</div>
+              <div class="text-[11px] text-[#86909c]">WeChat Green<br/>微信文章标签 / 成功状态</div>
+            </div>
+          </div>
+
+          <div class="swatch-card flex flex-col rounded-lg overflow-hidden border border-[#24242c] bg-[#16161c]">
+            <div class="h-24 w-full bg-[#dea584] flex items-center justify-center">
+              <span class="text-[#121215]/60 text-xs font-medium">Accent</span>
+            </div>
+            <div class="p-3">
+              <div class="font-mono text-xs font-bold text-[#c9ccd0] mb-1">#dea584</div>
+              <div class="text-[11px] text-[#86909c]">Code / Rust Orange<br/>代码块标识 / 警告状态</div>
+            </div>
+          </div>
+
+          <div class="swatch-card flex flex-col rounded-lg overflow-hidden border border-[#24242c] bg-[#16161c]">
+            <div class="h-24 w-full bg-[#ef4444] flex items-center justify-center">
+              <span class="text-white/80 text-xs font-medium">Danger</span>
+            </div>
+            <div class="p-3">
+              <div class="font-mono text-xs font-bold text-[#c9ccd0] mb-1">#ef4444</div>
+              <div class="text-[11px] text-[#86909c]">Red / Error<br/>报错 / 删除资源操作</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+</body>
+</html>

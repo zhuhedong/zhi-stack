@@ -1,0 +1,48 @@
+{
+  "name": "zhi-stack",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "icons": "node scripts/generate-icons.mjs",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "server": "cargo run --manifest-path server/Cargo.toml",
+    "db:dev": "node scripts/dev-db.mjs",
+    "test:server": "cargo test --manifest-path server/Cargo.toml",
+    "test:integration": "node scripts/integration.mjs",
+    "test:request": "node --experimental-strip-types --test scripts/request.test.ts",
+    "test:ui": "vitest run scripts/ui.test.tsx",
+    "test:connection": "vitest run scripts/server-connection.test.ts scripts/server-settings.test.tsx",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "lucide-react": "^1.43.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "autoprefixer": "^10.5.5",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "jsdom": "^30.0.1",
+    "oxlint": "^1.79.0",
+    "pg": "^8.23.0",
+    "postcss": "^8.5.28",
+    "prettier": "^3.9.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
+  }
+}

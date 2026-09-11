@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 512 512" fill="none">
+  <title>InfoHub</title>
+  <desc>An information dot and a connected iH monogram on an Apple Blue tile.</desc>
+  <defs>
+    <linearGradient id="tile" x1="76" y1="24" x2="428" y2="488" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#228BFF"/>
+      <stop offset="0.48" stop-color="#007AFF"/>
+      <stop offset="1" stop-color="#005AC8"/>
+    </linearGradient>
+    <radialGradient id="light" cx="0" cy="0" r="1" gradientTransform="translate(116 28) rotate(54) scale(444 512)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="edge" x1="256" y1="24" x2="256" y2="488" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.4"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#003F99" stop-opacity="0.14"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="212" y1="136" x2="300" y2="376" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EDF5FF"/>
+    </linearGradient>
+    <filter id="relief" x="116" y="122" width="280" height="278" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#003C8F" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  <path id="tile-shape" d="M144 24H368C447 24 488 65 488 144V368C488 447 447 488 368 488H144C65 488 24 447 24 368V144C24 65 65 24 144 24Z" fill="url(#tile)"/>
+  <path d="M144 24H368C447 24 488 65 488 144V368C488 447 447 488 368 488H144C65 488 24 447 24 368V144C24 65 65 24 144 24Z" fill="url(#light)" stroke="url(#edge)" stroke-width="2"/>
+  <g fill="url(#ink)" filter="url(#relief)">
+    <rect x="138" y="136" width="60" height="56" rx="17"/>
+    <path d="M154 222H314V152C314 141 319 136 330 136H358C369 136 374 141 374 152V360C374 371 369 376 358 376H330C319 376 314 371 314 360V278H198V360C198 371 193 376 182 376H154C143 376 138 371 138 360V238C138 227 143 222 154 222Z"/>
+  </g>
+</svg>

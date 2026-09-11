@@ -1,0 +1,13 @@
+# Optional CA overlay for providers using their own certificate authority.
+# Use together with compose.external-pg.yaml, never with the bundled-PG file.
+services:
+  app:
+    environment:
+      PGSSLROOTCERT: /run/infohub/pg-ca.pem
+    volumes:
+      - type: bind
+        source: ${PG_CA_FILE:?Set PG_CA_FILE to the provider PEM certificate path}
+        target: /run/infohub/pg-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false

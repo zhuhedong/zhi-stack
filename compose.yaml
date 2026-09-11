@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: infohub
+      POSTGRES_USER: infohub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - infohub_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U infohub -d infohub']
+      interval: 5s
+      timeout: 5s
+      retries: 15
+  app:
+    image: ${INFOHUB_IMAGE:-infohub:local}
+    build: .
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: infohub
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: infohub
+      BIND_ADDR: 0.0.0.0:3210
+      FRONTEND_DIR: /app/dist
+      RUST_LOG: ${RUST_LOG:-infohub_server=info}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      ALLOWED_PRIVATE_HOSTS: ${ALLOWED_PRIVATE_HOSTS:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3210,http://127.0.0.1:3210,http://tauri.localhost,https://tauri.localhost,tauri://localhost}
+      FILE_STORAGE: ${FILE_STORAGE:-local}
+      LOCAL_STORAGE_PATH: /data/files
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+    volumes:
+      - infohub_files:/data/files
+    ports:
+      - '127.0.0.1:3210:3210'
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  infohub_pg:
+  infohub_files:

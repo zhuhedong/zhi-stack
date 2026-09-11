@@ -1,0 +1,1824 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InfoHub — Apple Light 交互设计原型</title>
+  <!-- 当前视觉参考，样例数据仅用于演示；实际应用与 PostgreSQL 服务端见项目 README.md。 -->
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.1); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.2); }
+
+    .no-select { user-select: none; -webkit-user-select: none; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    input:not([type="checkbox"]), textarea, select { border-radius: 8px !important; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: #007AFF !important; }
+    @media (prefers-reduced-motion: reduce) { .animate-pop { animation: none !important; } }
+
+    /* HTTP Method 颜色徽标 */
+    .method-get { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .method-post { background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .method-put { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .method-delete { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+    @keyframes popIn {
+      0% { opacity: 0; transform: translateY(4px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    .animate-pop { animation: popIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+  </style>
+</head>
+<body class="bg-[#f5f5f7] text-[#1d1d1f] flex flex-col h-screen overflow-hidden text-xs no-select antialiased relative p-4 md:p-8">
+  <!-- Mac Wallpaper Simulation -->
+  <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+    <div class="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] bg-indigo-300/60 blur-[120px] rounded-full mix-blend-multiply"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-sky-300/60 blur-[100px] rounded-full mix-blend-multiply"></div>
+    <div class="absolute top-[20%] right-[30%] w-[40%] h-[40%] bg-pink-300/60 blur-[80px] rounded-full mix-blend-multiply"></div>
+    <div class="absolute bottom-[20%] left-[20%] w-[50%] h-[50%] bg-emerald-200/60 blur-[100px] rounded-full mix-blend-multiply"></div>
+  </div>
+  <div class="relative z-10 flex flex-col h-full w-full bg-white/60 backdrop-blur-3xl border border-black/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden">
+
+  <!-- ======================== 顶部系统栏 ======================== -->
+  <header class="h-9 min-h-[36px] bg-white/[0.05] backdrop-blur-md border-b border-black/10 flex items-center justify-between px-3 z-40 select-none">
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-4 pl-1">
+        <div class="flex items-center gap-1.5">
+          <div class="w-3 h-3 rounded-full bg-[#FF5F56] border border-black/10 shadow-inner"></div>
+          <div class="w-3 h-3 rounded-full bg-[#FFBD2E] border border-black/10 shadow-inner"></div>
+          <div class="w-3 h-3 rounded-full bg-[#27C93F] border border-black/10 shadow-inner"></div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="font-semibold text-black/90 tracking-tight text-xs">InfoHub 开发者数字工作台</span>
+        </div>
+      </div>
+
+      <div class="h-3 w-px bg-black/[0.05]"></div>
+
+      <div class="flex items-center gap-1.5 text-[11px] text-black/60">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+        <span id="system-status-indicator">PostgreSQL · 交互设计演示</span>
+      </div>
+    </div>
+
+    <!-- 中间：核心快捷采集与录入 -->
+    <div class="flex items-center gap-2">
+      <button onclick="openIngestModal()" class="h-6 px-3 rounded bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] hover:bg-[#007AFF]/80 text-white text-[11px] font-semibold flex items-center gap-1.5 transition shadow-sm">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        <span>收录抓取 (文章 / 项目)</span>
+        <kbd class="text-[9px] opacity-75 font-mono ml-0.5">⌘V</kbd>
+      </button>
+
+      <button onclick="openAddModal()" class="h-6 px-3 rounded bg-black/[0.05] hover:bg-black/10 text-black/80 text-[11px] border border-black/10 flex items-center gap-1.5 transition">
+        <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span>新建资产条目</span>
+      </button>
+    </div>
+
+    <!-- 右侧：全局搜索与安全锁 -->
+    <div class="flex items-center gap-2">
+      <div onclick="focusSearch()" class="h-6 px-2.5 rounded bg-white/50 border border-black/10 flex items-center gap-2 text-black/60 cursor-pointer hover:border-black/20">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <span class="text-[11px]">全局检索...</span>
+        <kbd class="text-[9px] font-mono opacity-60">⌘F</kbd>
+      </div>
+
+      <button onclick="toggleLockVault()" id="vault-btn" class="h-6 px-2 rounded bg-white/50 hover:bg-black/[0.03] text-emerald-400 border border-black/10 flex items-center gap-1 text-[10px]">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500" id="lock-dot"></span>
+        <span id="lock-txt">金库已解密</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ======================== 主体 3 栏架构 ======================== -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- ==================== 栏 1：三大支柱导航 (208px) ==================== -->
+    <aside class="w-52 min-w-[208px] bg-white/50 backdrop-blur-md border-r border-black/5 flex flex-col justify-between py-2 px-1.5 select-none">
+      <div class="space-y-4">
+        <!-- 支柱选择 -->
+        <div class="space-y-0.5">
+          <div class="px-2 py-1 text-[10px] font-bold text-black/40 uppercase tracking-wider">三大核心资产</div>
+
+          <!-- 支柱 1：知识与文章 -->
+          <button onclick="switchPillar('knowledge')" id="nav-knowledge" class="pillar-btn w-full flex items-center justify-between px-2.5 py-1.5 rounded text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05] font-medium transition">
+            <div class="flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-[#007AFF]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
+              <span>知识与文章</span>
+            </div>
+            <span class="text-[10px] font-mono text-black/60" id="count-knowledge">4</span>
+          </button>
+
+          <!-- 支柱 2：GitHub 项目雷达 -->
+          <button onclick="switchPillar('repo')" id="nav-repo" class="pillar-btn w-full flex items-center justify-between px-2.5 py-1.5 rounded text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05] font-medium transition">
+            <div class="flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+              <span>GitHub 项目雷达</span>
+            </div>
+            <span class="text-[10px] font-mono text-black/60" id="count-repo">3</span>
+          </button>
+
+          <!-- 支柱 3：服务器与密码库 -->
+          <button onclick="switchPillar('credential')" id="nav-credential" class="pillar-btn w-full flex items-center justify-between px-2.5 py-1.5 rounded text-[#1d1d1f] bg-black/[0.05] shadow-sm border border-black/10 font-medium transition">
+            <div class="flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span>服务器与密码库</span>
+            </div>
+            <span class="text-[10px] font-mono text-rose-400 font-bold" id="count-credential">4</span>
+          </button>
+        </div>
+
+        <!-- 动态左下级维度树 (根据当前支柱自适应渲染) -->
+        <div id="dynamic-left-dimension-tree" class="space-y-1 pt-2 border-t border-black/5">
+          <!-- JS 动态注入 -->
+        </div>
+      </div>
+
+      <!-- 底部状态卡片 -->
+      <div class="p-2.5 rounded bg-white/50 border-black/10 rounded-xl border border-black/10 space-y-1 text-[10px] text-black/60">
+        <div class="flex items-center justify-between">
+          <span id="footer-metric-label">加密存储</span>
+          <span class="text-emerald-400 font-mono" id="footer-metric-val">AES-256-GCM</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span>防盗链图床</span>
+          <span class="text-black/70 font-mono">本地已持久化</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ==================== 栏 2：清单展示与二级快捷过滤 (320px) ==================== -->
+    <section class="w-80 min-w-[320px] bg-white/50 backdrop-blur-xl border-r border-black/5 flex flex-col justify-between overflow-hidden select-none">
+      <div class="p-2.5 border-b border-black/5 space-y-2">
+        <div class="relative">
+          <input type="text" id="keyword-search-input" oninput="onSearchInput(event)" placeholder="检索标题、接口、Host 或标签..." class="w-full h-7 pl-7 pr-2 rounded bg-white/50 border-black/10 border border-black/10 text-xs text-[#1d1d1f] placeholder-black/40 focus:outline-none focus:border-[#007AFF] transition">
+          <svg class="w-3.5 h-3.5 text-black/40 absolute left-2 top-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </div>
+
+        <!-- 顶部二级快捷 Filter Bar -->
+        <div id="secondary-filter-bar" class="flex items-center gap-1 text-[10px] overflow-x-auto pb-0.5">
+          <!-- JS 动态注入 -->
+        </div>
+      </div>
+
+      <!-- 滚动条目流 -->
+      <div class="flex-1 overflow-y-auto divide-y divide-black/5" id="list-stream">
+        <!-- JS 注入 -->
+      </div>
+
+      <!-- 中栏底栏统计 -->
+      <div class="h-7 px-3 border-t border-black/5 bg-black/[0.03] border-black/10 flex items-center justify-between text-[10px] text-black/60 font-mono">
+        <span id="list-counter">显示 4 项</span>
+        <span>[J/K] 键快速导航</span>
+      </div>
+    </section>
+
+    <!-- ==================== 栏 3：深度检视与工作区 (Flex-1) ==================== -->
+    <main class="flex-1 bg-transparent flex flex-col overflow-hidden relative">
+
+      <!-- 顶栏元信息 -->
+      <div class="h-10 min-h-[40px] px-5 border-b border-black/5 flex items-center justify-between bg-white/50 backdrop-blur-xl">
+        <div class="flex items-center gap-3">
+          <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20" id="header-type-pill">
+            REST API & Swagger
+          </span>
+          <span class="text-black/30">•</span>
+          <span class="text-xs text-black/80 font-medium truncate max-w-[200px]" id="header-project-or-source">电商核心交易系统</span>
+          <span class="text-black/30">•</span>
+          <span class="text-xs text-black/50 font-mono" id="header-date">2026-09-08 离线同步</span>
+        </div>
+
+        <div class="flex items-center gap-2" id="header-actions">
+          <!-- JS 动态注入 -->
+        </div>
+      </div>
+
+      <!-- 画布主体挂载区 -->
+      <div class="flex-1 overflow-y-auto p-6 md:p-8 select-text max-w-3xl mx-auto w-full" id="canvas-mount">
+        <!-- JS 动态注入 -->
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast 通知浮层 -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded bg-black/[0.05] border border-black/10 text-xs text-[#1d1d1f] shadow-2xl flex items-center gap-2 z-50 pointer-events-none transition-all duration-200 opacity-0 translate-y-2">
+    <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+    <span id="toast-text">通知</span>
+  </div>
+
+  <!-- 采集解析抓取模态框 (Ingest Modal) -->
+  <div id="ingest-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="w-[520px] max-w-[calc(100vw-32px)] bg-white/90 backdrop-blur-2xl border border-black/10 rounded-xl shadow-2xl overflow-hidden animate-pop">
+      <div class="px-4 py-3 border-b border-black/10 flex items-center justify-between">
+        <span class="font-bold text-[#1d1d1f] text-xs flex items-center gap-2">
+          <span>⚡</span>
+          <span>智能采集流水线 (Smart Ingestion Pipeline)</span>
+        </span>
+        <button onclick="closeIngestModal()" class="text-black/60 hover:text-[#1d1d1f]">✕</button>
+      </div>
+      <div class="p-4 space-y-3">
+        <p class="text-xs text-black/60">粘贴微信文章、技术论坛帖子、GitHub 仓库或 Swagger-UI OpenAPI 链接，流水线将自动执行协议分析并离线下载图片。</p>
+        <div class="space-y-1">
+          <label class="text-[11px] font-medium text-black/70">目标 URL</label>
+          <input type="text" id="ingest-url-input" placeholder="https://mp.weixin.qq.com/s/... 或 https://github.com/..." class="w-full h-8 px-2.5 rounded bg-black/[0.05] border border-black/10 text-xs text-[#1d1d1f] mono focus:outline-none focus:border-[#007AFF]">
+        </div>
+        <div class="flex gap-2 text-[10px]">
+          <button onclick="presetIngest('wechat')" class="px-2 py-1 rounded bg-black/[0.05] hover:bg-black/10 text-black/70">填入微信文章示例</button>
+          <button onclick="presetIngest('github')" class="px-2 py-1 rounded bg-black/[0.05] hover:bg-black/10 text-black/70">填入 GitHub 仓库示例</button>
+          <button onclick="presetIngest('swagger')" class="px-2 py-1 rounded bg-black/[0.05] hover:bg-black/10 text-black/70">填入 Swagger-UI 示例</button>
+        </div>
+      </div>
+      <div class="px-4 py-2.5 border-t border-black/10 bg-black/[0.03] border-black/10 flex justify-end gap-2">
+        <button onclick="closeIngestModal()" class="px-3 py-1 rounded bg-black/[0.05] shadow-sm border border-black/10 text-black/70 hover:text-[#1d1d1f] text-xs">取消</button>
+        <button onclick="startIngestPipeline()" class="px-3 py-1 rounded bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] hover:bg-[#007AFF]/80 text-white text-xs font-semibold">开始分析抓取</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================== 核心业务逻辑与完整模型 ======================== -->
+  <script>
+    const STORE = {
+      // 支柱 1：知识与文章 (Knowledge & Articles) - 微信长文、论坛 Q&A、技术博客统一汇聚
+      knowledge: [
+        {
+          id: "know-1",
+          platform: "wechat",
+          platformName: "微信公众号",
+          sourceName: "腾讯技术工程",
+          author: "腾讯云资深架构师",
+          title: "深入理解 Rust 异步并发模型：Future、Waker 与 Tokio 运行时揭秘",
+          date: "2026-09-08",
+          url: "https://mp.weixin.qq.com/s/sample_rust_async",
+          imagesCount: 6,
+          tags: ["Rust", "异步编程", "Tokio"],
+          readerMode: "flow", // 'flow' | 'markdown'
+          summary: "微信公众号长文离线快照：深入剖析状态机生成，Pin 自引用安全保障，以及 Tokio 如何在 epoll 上调度海量轻量任务。",
+          content: `### 核心要点总结
+
+Rust 没有采用 Go 的主动运行时抢占式协程，而是采用了零开销的惰性轮询协议：
+
+\`\`\`rust
+pub trait Future {
+    type Output;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>;
+}
+\`\`\`
+
+#### 自引用结构体与 Pin
+当异步函数遇到 \`.await\` 挂起点，编译器会将栈帧变量捕获进一个自动生成的 Enum 状态机中。由于状态机内部存在自指针引用，一旦发生内存位移，指针将瞬间失效。\`Pin\` 从类型系统层面消除了这种隐患。
+
+> **微信公众号离线注记**：本文已本地转存 6 张原图，防 404 及微信图片防盗链封锁。`
+        },
+        {
+          id: "know-2",
+          platform: "forum",
+          platformName: "技术论坛 (V2EX)",
+          sourceName: "V2EX · 程序员节点",
+          author: "Livid",
+          title: "讨论：PostgreSQL 千万级大表覆盖索引（Covering Index）跳过回表扫描的最佳实践",
+          date: "2026-09-05",
+          url: "https://v2ex.com/t/928102",
+          imagesCount: 0,
+          tags: ["PostgreSQL", "Database", "性能调优"],
+          readerMode: "flow",
+          summary: "论坛深度技术问答切片：针对大表查询如何利用 INCLUDE 子句构建覆盖索引，完全省去回表随机 I/O 开销。",
+          content: `### 论坛提问与精华答案整理
+
+**楼主提问**：单表数据量达 3000 万，频繁查询 \`WHERE tenant_id = ? AND status = ?\` 并返回 \`created_at, order_sn\`，回表开销占总时延 70%，求优化思路。
+
+**社区高赞方案**：
+推荐采用 PG 11+ 原生引入的 \`INCLUDE\` 附加列特性构建 Covering Index：
+
+\`\`\`sql
+CREATE INDEX idx_orders_covering ON orders (tenant_id, status) 
+INCLUDE (created_at, order_sn);
+\`\`\`
+
+- **原理解析**：仅将前导列放入 B-Tree 索引判定层，\`INCLUDE\` 列存储在叶子节点的数据页中。查询命中索引时直接从叶子页拿数据，实现 **Index Only Scan**，执行耗时由 140ms 直降至 4ms。`
+        },
+        {
+          id: "know-3",
+          platform: "forum",
+          platformName: "技术社区 (掘金/知乎)",
+          sourceName: "字节后端架构专栏",
+          author: "字节跳动架构师",
+          title: "百万级 QPS 场景下，单机 Redis 性能瓶颈如何排查与突破？",
+          date: "2026-09-03",
+          url: "https://juejin.cn/post/728911029",
+          imagesCount: 2,
+          tags: ["Redis", "高并发", "架构设计"],
+          readerMode: "flow",
+          summary: "社区精华讨论：从 CPU 软中断倾斜、大 Key 阻塞、fork 内存耗时等多维度定位 Redis 性能抖动问题。",
+          content: `### 核心排查军规
+
+1. **CPU 亲和性绑定 (NUMA Node Binding)**：Redis 主工作线程应与网卡中断绑在同一 NUMA Node，避免跨 Socket 内存总线延迟。
+2. **渐进式删除大 Key**：严禁直接执行 \`DEL big_hash\`，改用 \`UNLINK\` 异步惰性释放。
+3. **TCP Backlog 与溢出监控**：观察 \`/proc/net/netstat\` 中的 \`ListenOverflows\`。`
+        },
+        {
+          id: "know-4",
+          platform: "blog",
+          platformName: "技术博客与Docs",
+          sourceName: "Cloudflare 官方博客",
+          author: "Systems Team",
+          title: "WebAssembly 在边缘无服务器计算的实践：从 500ms 到 5ms 冷启动",
+          date: "2026-08-28",
+          url: "https://blog.cloudflare.com/wasm-edge-compute",
+          imagesCount: 1,
+          tags: ["Wasm", "边缘计算", "Serverless"],
+          readerMode: "flow",
+          summary: "权威官方博客：解析 V8 隔离区（Isolates）与 Wasm AOT 预编译技术如何将计算启动延迟压制在 5ms 以内。",
+          content: `### 为什么选择 Wasm + Isolates？
+
+传统的 Docker/容器冷启动需要初始化 Linux Namespace、Cgroups 和完整的内核虚拟化堆栈，耗时难以低于 300ms。
+通过 V8 Isolates，数千个租户代码可以在同一个 OS 进程内安全沙箱运行，内存开销仅数十 KB。`
+        }
+      ],
+
+      // 支柱 2：GitHub 项目雷达 (GitHub Projects Radar) - 关注、Release 跟踪与本地工作区绑定
+      repo: [
+        {
+          id: "repo-1",
+          name: "tokio-rs/axum",
+          owner: "tokio-rs",
+          repoName: "axum",
+          language: "Rust",
+          langColor: "#dea584",
+          stars: "18.4k",
+          forks: "1.2k",
+          watchers: "210",
+          license: "MIT",
+          latestRelease: "v0.7.5",
+          releaseDate: "2026-08-20",
+          localWorkspacePath: "d:/develop/coding/rust/axum-playground",
+          summary: "Ergonomic and modular web framework built with Tokio, Tower, and Hyper.",
+          releaseNotes: `### v0.7.5 (2026-08-20)
+- **Features**: Support for nested Path extractors with tuple syntax.
+- **Fixes**: Fixed memory leak in websocket upgrade handshake under high backpressure.
+- **Docs**: Added comprehensive examples for custom middleware layers.`,
+          cookbookNotes: `# Axum 实战避坑备忘
+
+1. **State 共享必须使用 Arc 或 clone 廉价类型**：
+\`\`\`rust
+#[derive(Clone)]
+struct AppState {
+    db: Arc<PgPool>,
+    cache: Arc<RedisClient>,
+}
+\`\`\`
+2. **Extractors 的执行顺序非常敏感**：
+带 Request Body 的 Extractor（如 \`Json<T>\`）必须放在参数列表的最后一个，否则前置中间件无法读取 Body。`
+        },
+        {
+          id: "repo-2",
+          name: "tauri-apps/tauri",
+          owner: "tauri-apps",
+          repoName: "tauri",
+          language: "Rust",
+          langColor: "#dea584",
+          stars: "84.5k",
+          forks: "2.8k",
+          watchers: "980",
+          license: "Apache-2.0",
+          latestRelease: "v2.0.0-rc",
+          releaseDate: "2026-09-01",
+          localWorkspacePath: "d:/develop/coding/rust/zhi-stack",
+          summary: "Build smaller, faster, and more secure desktop and mobile applications with a web frontend.",
+          releaseNotes: `### v2.0.0-rc (2026-09-01)
+- **Mobile Support**: Official Android and iOS cross-compilation pipeline.
+- **IPC Performance**: Switched IPC transport from custom protocol to raw memory mapping.
+- **Security**: Granular capability permissions file syntax.`,
+          cookbookNotes: `# Tauri 2 开发关键要点
+
+- PostgreSQL 中的敏感字段通过 Rust \`aes-gcm\` 实现。
+- 跨平台文件拖拽事件与本地路径提取：优先使用 \`tauri-plugin-fs\`。`
+        },
+        {
+          id: "repo-3",
+          name: "dbx-io/dbx",
+          owner: "dbx-io",
+          repoName: "dbx",
+          language: "Go",
+          langColor: "#00add8",
+          stars: "12.8k",
+          forks: "860",
+          watchers: "150",
+          license: "AGPL-3.0",
+          latestRelease: "v1.4.2",
+          releaseDate: "2026-08-15",
+          localWorkspacePath: "d:/develop/coding/go/dbx-client",
+          summary: "Universal database protocol adapter and connection manager supporting 40+ SQL/NoSQL dialects.",
+          releaseNotes: `### v1.4.2
+- Added full profile support for Doris, StarRocks, and YashanDB.
+- Enhanced SSH Bastion tunnel multiplexing.`,
+          cookbookNotes: `# DBX 协议兼容备忘
+针对 MySQL 兼容协议（TiDB, Doris, OceanBase），虽然连接握手与 SQL 语法通用，但系统字典表（information_schema）和 DDL 机制不同，必须启用独立 Profile。`
+        }
+      ],
+
+      // 支柱 3：服务器与密码库 (Credentials & Infrastructure)
+      credential: [
+        {
+          id: "cred-api-1",
+          projectId: "proj-mall",
+          projectName: "电商核心交易系统",
+          family: "http",
+          typeKey: "rest_api",
+          name: "订单中心微服务开放接口 (REST API)",
+          date: "2026-09-08",
+          activeTab: "swagger",
+          selectedEndpointIndex: 0,
+          endpointTab: "headers",
+          // 1. 全局默认请求头
+          globalHeaders: [
+            { key: "Authorization", value: "Bearer mall_jwt_token_secret_99812AxbC", enabled: true, desc: "JWT 鉴权凭证" },
+            { key: "X-Tenant-Id", value: "1002", enabled: true, desc: "电商多租户标识 (PROD 生产区)" },
+            { key: "X-App-Version", value: "v2.4.0", enabled: true, desc: "客户端版本" },
+            { key: "Content-Type", value: "application/json", enabled: true, desc: "标准 JSON 报文" }
+          ],
+          fields: {
+            baseUrl: "https://api.mall.internal.net/v2",
+            swaggerUrl: "https://api.mall.internal.net/v3/api-docs",
+            rateLimit: "3000 QPS (内网专线网关)"
+          },
+          // 2. 抓取到的 Swagger 接口列表
+          swaggerEndpoints: [
+            {
+              method: "POST",
+              path: "/orders/create",
+              summary: "下单创建交易单（支持幂等 Token）",
+              tag: "交易模块",
+              customHeaders: [
+                { key: "X-Idempotency-Key", value: "idemp_order_99812Axb", enabled: true, desc: "防重复提交幂等键" },
+                { key: "X-Client-Ip", value: "198.51.100.12", enabled: true, desc: "防刷单透传真实 IP" }
+              ],
+              queryParams: [
+                { key: "sourceChannel", value: "MINI_PROGRAM", enabled: true, desc: "来源渠道 (小程序)" },
+                { key: "debugMode", value: "false", enabled: false, desc: "调试沙箱开关" }
+              ],
+              pathParams: [],
+              requestBody: JSON.stringify({
+                buyerId: "user_8891290",
+                payChannel: "WECHAT_PAY",
+                currency: "CNY",
+                totalAmount: 398.00,
+                items: [
+                  { skuId: "sku_tokio_book_01", count: 1, unitPrice: 99.00 },
+                  { skuId: "sku_rust_course_02", count: 1, unitPrice: 299.00 }
+                ]
+              }, null, 2)
+            },
+            {
+              method: "GET",
+              path: "/orders/{orderId}",
+              summary: "查询订单详情与履约状态",
+              tag: "交易模块",
+              customHeaders: [],
+              queryParams: [
+                { key: "includeLogistics", value: "true", enabled: true, desc: "是否附带物流轨迹" }
+              ],
+              pathParams: [
+                { key: "orderId", value: "ord_20260908_88912", desc: "目标订单唯一流水号" }
+              ],
+              requestBody: ""
+            },
+            {
+              method: "POST",
+              path: "/orders/{orderId}/cancel",
+              summary: "取消订单并触发原路退款",
+              tag: "交易模块",
+              customHeaders: [
+                { key: "X-Reason-Code", value: "USER_NO_LONGER_WANTS", enabled: true, desc: "取消原因枚举" }
+              ],
+              queryParams: [],
+              pathParams: [
+                { key: "orderId", value: "ord_20260908_88912", desc: "要取消的订单号" }
+              ],
+              requestBody: JSON.stringify({
+                refundImmediate: true,
+                operatorNotes: "用户主动取消"
+              }, null, 2)
+            },
+            {
+              method: "GET",
+              path: "/users/profile",
+              summary: "获取当前登录用户身份与积分",
+              tag: "用户模块",
+              customHeaders: [],
+              queryParams: [
+                { key: "fields", value: "id,nickname,points,tier", enabled: true, desc: "投影字段" }
+              ],
+              pathParams: [],
+              requestBody: ""
+            }
+          ],
+          attachments: [
+            { id: "att-1", name: "Mall_OpenAPI_v2.4_2026.pdf", size: "2.8 MB", memo: "官方离线接口白皮书文档" },
+            { id: "att-2", name: "Mall_Order_Postman_Collection.json", size: "142 KB", memo: "一键导入 Postman / Apifox" }
+          ]
+        },
+        {
+          id: "cred-db-1",
+          projectId: "proj-mall",
+          projectName: "电商核心交易系统",
+          family: "sql",
+          typeKey: "mysql",
+          name: "订单业务主数据库 (MySQL 8.0)",
+          date: "2026-09-02",
+          activeTab: "overview",
+          fields: { host: "10.0.1.24", port: "3306", database: "mall_orders_db", username: "order_writer_admin", password: "MySQL_Pass#9821_Secret!" },
+          attachments: []
+        },
+        {
+          id: "cred-redis-1",
+          projectId: "proj-mall",
+          projectName: "电商核心交易系统",
+          family: "nosql",
+          typeKey: "redis",
+          name: "购物车缓存集群 (Redis 7.0)",
+          date: "2026-09-03",
+          activeTab: "overview",
+          fields: { host: "10.0.1.50", port: "6379", authPassword: "RedisClusterAuth#88921_xK", dbIndex: "0" },
+          attachments: []
+        },
+        {
+          id: "cred-ai-1",
+          projectId: "proj-ai",
+          projectName: "AI 大模型与向量系统",
+          family: "vector",
+          typeKey: "milvus",
+          name: "企业知识库向量索引库 (Milvus 2.4)",
+          date: "2026-09-05",
+          activeTab: "overview",
+          fields: { host: "10.0.2.90", port: "19530", username: "milvus_admin", password: "Milvus_Secure_Pass#2026", collection: "enterprise_docs_1536d" },
+          attachments: []
+        }
+      ]
+    };
+
+    // 当前工作台状态
+    let currentPillar = "credential"; // 'knowledge' | 'repo' | 'credential'
+    let currentSelectedId = "cred-api-1";
+    let activeCredProject = "all";
+    let activeCredFamily = "all";
+    let activeKnowledgePlatform = "all";
+    let activeRepoLanguage = "all";
+    let isVaultLocked = false;
+    let probeResponseMock = null;
+
+    // 初始化挂载
+    function init() {
+      updateCounts();
+      switchPillar(currentPillar, currentSelectedId);
+    }
+
+    function updateCounts() {
+      document.getElementById('count-knowledge').textContent = STORE.knowledge.length;
+      document.getElementById('count-repo').textContent = STORE.repo.length;
+      document.getElementById('count-credential').textContent = STORE.credential.length;
+    }
+
+    // ======================== 支柱切换总控 ========================
+    function switchPillar(pillar, defaultSelectedId = null) {
+      currentPillar = pillar;
+      probeResponseMock = null;
+
+      // 更新支柱高亮
+      document.querySelectorAll('.pillar-btn').forEach(b => {
+        b.classList.remove('bg-black/[0.05]', 'shadow-sm', 'border', 'border-black/10', 'text-[#1d1d1f]');
+        b.classList.add('text-black/60');
+      });
+      const activeBtn = document.getElementById('nav-' + pillar);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-black/[0.05]', 'shadow-sm', 'border', 'border-black/10', 'text-[#1d1d1f]');
+        activeBtn.classList.remove('text-black/60');
+      }
+
+      // 动态更新左栏树与二级过滤器
+      renderLeftDimensionTree();
+      renderSecondaryFilterBar();
+
+      // 选定默认条目
+      const list = getFilteredItems();
+      const targetId = defaultSelectedId || (list[0] ? list[0].id : null);
+      if (targetId) {
+        selectItem(targetId);
+      } else {
+        currentSelectedId = null;
+        renderMiddleList();
+        renderEmptyCanvas();
+      }
+    }
+
+    // 渲染左侧自适应维度树
+    function renderLeftDimensionTree() {
+      const tree = document.getElementById('dynamic-left-dimension-tree');
+      if (currentPillar === 'credential') {
+        tree.innerHTML = `
+          <div class="px-2 py-1 text-[10px] font-bold text-black/50 uppercase tracking-wider flex items-center justify-between">
+            <span>归属项目 (Projects)</span>
+          </div>
+          <div class="space-y-0.5 text-xs">
+            <button onclick="filterCredByProject('all')" id="proj-btn-all" class="proj-nav w-full flex items-center justify-between px-2 py-1 rounded ${activeCredProject === 'all' ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05]'}">
+              <span class="truncate">📁 全部工程项目</span>
+              <span class="text-[10px] text-black/40 font-mono">${STORE.credential.length}</span>
+            </button>
+            <button onclick="filterCredByProject('proj-mall')" id="proj-btn-mall" class="proj-nav w-full flex items-center justify-between px-2 py-1 rounded ${activeCredProject === 'proj-mall' ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05]'}">
+              <span class="truncate">📁 电商核心交易系统</span>
+              <span class="text-[10px] text-black/40 font-mono">3</span>
+            </button>
+            <button onclick="filterCredByProject('proj-ai')" id="proj-btn-ai" class="proj-nav w-full flex items-center justify-between px-2 py-1 rounded ${activeCredProject === 'proj-ai' ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05]'}">
+              <span class="truncate">📁 AI 大模型与向量系统</span>
+              <span class="text-[10px] text-black/40 font-mono">1</span>
+            </button>
+          </div>
+        `;
+      } else if (currentPillar === 'knowledge') {
+        tree.innerHTML = `
+          <div class="px-2 py-1 text-[10px] font-bold text-black/50 uppercase tracking-wider flex items-center justify-between">
+            <span>知识库分类</span>
+          </div>
+          <div class="space-y-0.5 text-xs">
+            <button onclick="setKnowledgePlatformFilter('all')" class="w-full flex items-center justify-between px-2 py-1 rounded ${activeKnowledgePlatform === 'all' ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05]'}">
+              <span>📚 全部知识剪贴</span>
+              <span class="text-[10px] text-black/40 font-mono">${STORE.knowledge.length}</span>
+            </button>
+            <button onclick="setKnowledgePlatformFilter('wechat')" class="w-full flex items-center justify-between px-2 py-1 rounded ${activeKnowledgePlatform === 'wechat' ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05]'}">
+              <span class="flex items-center gap-1.5"><span class="text-emerald-400">💬</span> 微信公众号文章</span>
+              <span class="text-[10px] text-black/40 font-mono">1</span>
+            </button>
+            <button onclick="setKnowledgePlatformFilter('forum')" class="w-full flex items-center justify-between px-2 py-1 rounded ${activeKnowledgePlatform === 'forum' ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05]'}">
+              <span class="flex items-center gap-1.5"><span class="text-cyan-400">🌐</span> 技术社区讨论</span>
+              <span class="text-[10px] text-black/40 font-mono">2</span>
+            </button>
+            <button onclick="setKnowledgePlatformFilter('blog')" class="w-full flex items-center justify-between px-2 py-1 rounded ${activeKnowledgePlatform === 'blog' ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05]'}">
+              <span class="flex items-center gap-1.5"><span class="text-purple-400">📝</span> 架构博客与文档</span>
+              <span class="text-[10px] text-black/40 font-mono">1</span>
+            </button>
+          </div>
+        `;
+      } else {
+        // repo
+        tree.innerHTML = `
+          <div class="px-2 py-1 text-[10px] font-bold text-black/50 uppercase tracking-wider flex items-center justify-between">
+            <span>技术栈语言</span>
+          </div>
+          <div class="space-y-0.5 text-xs">
+            <button onclick="setRepoLanguageFilter('all')" class="w-full flex items-center justify-between px-2 py-1 rounded ${activeRepoLanguage === 'all' ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05]'}">
+              <span>🐙 全部关注项目</span>
+              <span class="text-[10px] text-black/40 font-mono">${STORE.repo.length}</span>
+            </button>
+            <button onclick="setRepoLanguageFilter('Rust')" class="w-full flex items-center justify-between px-2 py-1 rounded ${activeRepoLanguage === 'Rust' ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05]'}">
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#dea584]"></span> Rust 核心生态</span>
+              <span class="text-[10px] text-black/40 font-mono">2</span>
+            </button>
+            <button onclick="setRepoLanguageFilter('Go')" class="w-full flex items-center justify-between px-2 py-1 rounded ${activeRepoLanguage === 'Go' ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f] hover:bg-black/[0.05]'}">
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#00add8]"></span> Go 系统组件</span>
+              <span class="text-[10px] text-black/40 font-mono">1</span>
+            </button>
+          </div>
+        `;
+      }
+    }
+
+    // 渲染中栏顶部快捷过滤条
+    function renderSecondaryFilterBar() {
+      const bar = document.getElementById('secondary-filter-bar');
+      if (currentPillar === 'credential') {
+        bar.innerHTML = `
+          <button onclick="setCredFamilyFilter('all')" class="px-2 py-0.5 rounded ${activeCredFamily === 'all' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} flex-shrink-0">全部</button>
+          <button onclick="setCredFamilyFilter('http')" class="px-2 py-0.5 rounded ${activeCredFamily === 'http' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-bold' : 'text-black/60 hover:text-[#1d1d1f]'} text-[#007AFF] flex-shrink-0">REST/Swagger</button>
+          <button onclick="setCredFamilyFilter('sql')" class="px-2 py-0.5 rounded ${activeCredFamily === 'sql' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} flex-shrink-0">SQL 数据库</button>
+          <button onclick="setCredFamilyFilter('nosql')" class="px-2 py-0.5 rounded ${activeCredFamily === 'nosql' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} flex-shrink-0">缓存 NoSQL</button>
+          <button onclick="setCredFamilyFilter('vector')" class="px-2 py-0.5 rounded ${activeCredFamily === 'vector' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} flex-shrink-0">AI 向量</button>
+        `;
+      } else if (currentPillar === 'knowledge') {
+        bar.innerHTML = `
+          <button onclick="setKnowledgePlatformFilter('all')" class="px-2 py-0.5 rounded ${activeKnowledgePlatform === 'all' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} flex-shrink-0">全部来源</button>
+          <button onclick="setKnowledgePlatformFilter('wechat')" class="px-2 py-0.5 rounded ${activeKnowledgePlatform === 'wechat' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} text-[#07c160] flex-shrink-0">微信公众号</button>
+          <button onclick="setKnowledgePlatformFilter('forum')" class="px-2 py-0.5 rounded ${activeKnowledgePlatform === 'forum' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} text-cyan-400 flex-shrink-0">技术论坛</button>
+          <button onclick="setKnowledgePlatformFilter('blog')" class="px-2 py-0.5 rounded ${activeKnowledgePlatform === 'blog' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} text-purple-400 flex-shrink-0">架构博客</button>
+        `;
+      } else {
+        bar.innerHTML = `
+          <button onclick="setRepoLanguageFilter('all')" class="px-2 py-0.5 rounded ${activeRepoLanguage === 'all' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} flex-shrink-0">全部语言</button>
+          <button onclick="setRepoLanguageFilter('Rust')" class="px-2 py-0.5 rounded ${activeRepoLanguage === 'Rust' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} text-[#dea584] flex-shrink-0">Rust</button>
+          <button onclick="setRepoLanguageFilter('Go')" class="px-2 py-0.5 rounded ${activeRepoLanguage === 'Go' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] font-medium' : 'text-black/60 hover:text-[#1d1d1f]'} text-[#00add8] flex-shrink-0">Go</button>
+        `;
+      }
+    }
+
+    // 过滤列表计算
+    function getFilteredItems(query = "") {
+      const list = STORE[currentPillar] || [];
+      return list.filter(item => {
+        if (currentPillar === 'credential') {
+          if (activeCredProject !== 'all' && item.projectId !== activeCredProject) return false;
+          if (activeCredFamily !== 'all' && item.family !== activeCredFamily) return false;
+          if (query) {
+            const q = query.toLowerCase();
+            return item.name.toLowerCase().includes(q) || (item.fields.baseUrl && item.fields.baseUrl.toLowerCase().includes(q)) || (item.fields.host && item.fields.host.toLowerCase().includes(q));
+          }
+        } else if (currentPillar === 'knowledge') {
+          if (activeKnowledgePlatform !== 'all' && item.platform !== activeKnowledgePlatform) return false;
+          if (query) {
+            const q = query.toLowerCase();
+            return item.title.toLowerCase().includes(q) || item.sourceName.toLowerCase().includes(q) || (item.tags && item.tags.some(t => t.toLowerCase().includes(q)));
+          }
+        } else if (currentPillar === 'repo') {
+          if (activeRepoLanguage !== 'all' && item.language !== activeRepoLanguage) return false;
+          if (query) {
+            const q = query.toLowerCase();
+            return item.name.toLowerCase().includes(q) || item.summary.toLowerCase().includes(q);
+          }
+        }
+        return true;
+      });
+    }
+
+    // 渲染中栏列表
+    function renderMiddleList(query = "") {
+      const stream = document.getElementById('list-stream');
+      stream.innerHTML = "";
+      const filtered = getFilteredItems(query);
+      document.getElementById('list-counter').textContent = `显示 ${filtered.length} 项`;
+
+      filtered.forEach(item => {
+        const isSelected = item.id === currentSelectedId;
+        const card = document.createElement('div');
+        card.className = `p-3 cursor-pointer transition border-l-2 ${
+          isSelected ? 'bg-black/[0.05] border-[#007AFF] text-[#1d1d1f]' : 'border-transparent hover:bg-black/[0.02] text-black/90'
+        }`;
+        card.onclick = () => selectItem(item.id);
+
+        if (currentPillar === 'credential') {
+          let icon = item.family === 'http' ? '🌐' : item.typeKey === 'mysql' ? '🐬' : item.typeKey === 'redis' ? '⚡' : '🧠';
+          let subMeta = item.fields.baseUrl || `${item.fields.host}:${item.fields.port || ''}`;
+          card.innerHTML = `
+            <div class="flex items-center justify-between gap-1 mb-1">
+              <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-black/[0.05] border border-black/5 text-black/60 flex items-center gap-1 font-mono">
+                <span>${icon}</span>
+                <span>${item.typeKey.toUpperCase()}</span>
+              </span>
+              <span class="text-[10px] text-amber-400 font-mono truncate max-w-[130px]">${item.projectName}</span>
+            </div>
+            <h4 class="font-medium text-[12.5px] leading-snug truncate ${isSelected ? 'text-[#1d1d1f]' : 'text-black/80'}">
+              ${item.name}
+            </h4>
+            <div class="flex items-center justify-between mt-1.5 text-[10px] text-black/40 font-mono">
+              <span class="truncate max-w-[170px]">${subMeta}</span>
+              <span class="text-emerald-400">● 活跃</span>
+            </div>
+          `;
+        } else if (currentPillar === 'knowledge') {
+          let badge = item.platform === 'wechat' 
+            ? '<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#07c160]/10 text-[#07c160] flex items-center gap-1"><span>💬</span>微信离线</span>'
+            : item.platform === 'forum'
+            ? '<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-500/10 text-cyan-400 flex items-center gap-1"><span>🌐</span>论坛讨论</span>'
+            : '<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-500/10 text-purple-400 flex items-center gap-1"><span>📝</span>官方博客</span>';
+
+          card.innerHTML = `
+            <div class="flex items-center justify-between gap-1 mb-1">
+              ${badge}
+              <span class="text-[10px] text-black/40 font-mono">${item.date}</span>
+            </div>
+            <h4 class="font-medium text-[12.5px] leading-snug line-clamp-2 ${isSelected ? 'text-[#1d1d1f]' : 'text-black/80'}">
+              ${item.title}
+            </h4>
+            <p class="text-[11px] text-black/60 line-clamp-1 mt-1">${item.summary}</p>
+            <div class="flex items-center justify-between mt-2 text-[10px] text-black/40">
+              <span class="truncate font-medium text-black/60 max-w-[140px]">${item.sourceName}</span>
+              <div class="flex gap-1">
+                ${(item.tags || []).slice(0, 2).map(t => `<span class="px-1 py-0.2 rounded bg-black/[0.05] text-black/60">#${t}</span>`).join('')}
+              </div>
+            </div>
+          `;
+        } else {
+          // repo
+          card.innerHTML = `
+            <div class="flex items-center justify-between gap-1 mb-1">
+              <span class="flex items-center gap-1 text-[11px] font-mono font-semibold text-black/80">
+                <span class="w-2 h-2 rounded-full" style="background-color: ${item.langColor}"></span>
+                <span>${item.language}</span>
+              </span>
+              <span class="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] font-bold">★ ${item.stars}</span>
+            </div>
+            <h4 class="font-bold text-[13px] leading-snug truncate ${isSelected ? 'text-[#1d1d1f]' : 'text-[#1d1d1f]'}">
+              ${item.name}
+            </h4>
+            <p class="text-[11px] text-black/60 line-clamp-1 mt-1">${item.summary}</p>
+            <div class="flex items-center justify-between mt-2 text-[10px] text-black/40 font-mono">
+              <span class="text-emerald-400">🏷️ ${item.latestRelease}</span>
+              <span class="truncate max-w-[130px] text-black/50">📁 本地已关联</span>
+            </div>
+          `;
+        }
+
+        stream.appendChild(card);
+      });
+    }
+
+    // 选中具体条目并渲染画布
+    function selectItem(id) {
+      currentSelectedId = id;
+      probeResponseMock = null;
+      const list = STORE[currentPillar] || [];
+      const item = list.find(x => x.id === id);
+      if (!item) return;
+
+      renderMiddleList();
+
+      const pill = document.getElementById('header-type-pill');
+      const subLabel = document.getElementById('header-project-or-source');
+      const dateLabel = document.getElementById('header-date');
+      const actions = document.getElementById('header-actions');
+
+      if (currentPillar === 'credential') {
+        pill.className = "px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20";
+        pill.textContent = item.family === 'http' ? 'REST API & Swagger' : item.typeKey.toUpperCase();
+        subLabel.textContent = item.projectName;
+        dateLabel.textContent = `更新于 ${item.date}`;
+        actions.innerHTML = `
+          <button onclick="showToast('已同步最新 OpenAPI 规范')" class="h-6 px-2.5 rounded bg-white/50 hover:bg-black/10 text-black/80 text-[11px] border border-black/10 flex items-center gap-1 transition">
+            <span>同步规范</span>
+          </button>
+        `;
+        renderCredentialCanvas(item);
+      } else if (currentPillar === 'knowledge') {
+        pill.className = item.platform === 'wechat' 
+          ? "px-2 py-0.5 rounded text-[10px] font-semibold bg-[#07c160]/10 text-[#07c160] border border-[#07c160]/20"
+          : "px-2 py-0.5 rounded text-[10px] font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20";
+        pill.textContent = item.platformName;
+        subLabel.textContent = item.sourceName;
+        dateLabel.textContent = `${item.date} 抓取归档`;
+        actions.innerHTML = `
+          <div class="flex items-center gap-1 bg-white/50 p-0.5 rounded border border-black/10">
+            <button onclick="setKnowledgeReaderMode('${item.id}', 'flow')" class="px-2 py-0.5 rounded text-[11px] font-medium transition ${item.readerMode === 'flow' ? 'bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] text-white' : 'text-black/60 hover:text-[#1d1d1f]'}">流畅精读</button>
+            <button onclick="setKnowledgeReaderMode('${item.id}', 'markdown')" class="px-2 py-0.5 rounded text-[11px] font-medium transition ${item.readerMode === 'markdown' ? 'bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] text-white' : 'text-black/60 hover:text-[#1d1d1f]'}">Markdown 源码</button>
+          </div>
+          <button onclick="showToast('已重新抓取更新该文章并校验图片哈希')" class="h-6 px-2.5 rounded bg-black/[0.05] hover:bg-black/10 text-black/70 text-[11px] border border-black/10 flex items-center gap-1 transition">
+            <span>重新抓取</span>
+          </button>
+        `;
+        renderKnowledgeCanvas(item);
+      } else {
+        // repo
+        pill.className = "px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20";
+        pill.textContent = `GitHub 仓库 · ${item.language}`;
+        subLabel.textContent = item.name;
+        dateLabel.textContent = `Release ${item.latestRelease} (${item.releaseDate})`;
+        actions.innerHTML = `
+          <button onclick="openInVSCode('${item.localWorkspacePath}')" class="h-6 px-2.5 rounded bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] hover:bg-[#007AFF]/80 text-white text-[11px] font-semibold flex items-center gap-1.5 shadow-sm transition">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M23.15 2.587L18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.94-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352z"/></svg>
+            <span>在 VS Code 打开</span>
+          </button>
+          <button onclick="showToast('已拉取最新 GitHub Releases')" class="h-6 px-2.5 rounded bg-black/[0.05] hover:bg-black/10 text-black/70 text-[11px] border border-black/10 transition">
+            <span>检查更新</span>
+          </button>
+        `;
+        renderRepoCanvas(item);
+      }
+    }
+
+    // ======================== 支柱 1：知识与文章画布渲染 ========================
+    function renderKnowledgeCanvas(item) {
+      const mount = document.getElementById('canvas-mount');
+      if (item.readerMode === 'markdown') {
+        // CodeMirror 6 源码视图
+        mount.innerHTML = `
+          <div class="space-y-4 animate-pop max-w-2xl">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-black/60 font-medium font-mono">CodeMirror 6 Markdown 实时源码编辑器</span>
+              <button onclick="showToast('原型演示：保存文档（实际持久化请使用应用）')" class="text-[#007AFF] hover:underline">保存修改</button>
+            </div>
+            <div class="border border-black/10 rounded-xl overflow-hidden bg-black/[0.05] font-mono text-xs flex shadow-lg">
+              <div class="bg-white/50 backdrop-blur-md text-black/40 py-3 px-2 text-right border-r border-black/10 select-none leading-relaxed">
+                1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14
+              </div>
+              <textarea class="flex-1 bg-transparent p-3 text-black/80 outline-none resize-none leading-relaxed font-mono" rows="18">${item.content}</textarea>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // 流畅精读器
+      let platformBanner = "";
+      if (item.platform === 'wechat') {
+        platformBanner = `
+          <div class="p-3.5 rounded-xl bg-black/[0.03] backdrop-blur-2xl border border-black/10 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-lg bg-[#07c160]/10 text-[#07c160] flex items-center justify-center font-bold text-sm border border-[#07c160]/20">
+                微
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="font-bold text-[#1d1d1f] text-xs">${item.sourceName}</span>
+                  <span class="px-1.5 py-0.2 rounded text-[9px] bg-black/[0.05] shadow-sm border border-black/10 text-black/60">微信原创认证</span>
+                </div>
+                <div class="text-[10px] text-black/50 mt-0.5 flex items-center gap-2">
+                  <span>作者: ${item.author}</span>
+                  <span>•</span>
+                  <span class="text-emerald-400 flex items-center gap-1 font-mono">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    已离线镜像 (${item.imagesCount} 张原图免除防盗链)
+                  </span>
+                </div>
+              </div>
+            </div>
+            <a href="${item.url}" target="_blank" class="px-2.5 py-1 rounded bg-black/[0.05] hover:bg-black/10 text-black/70 text-[11px] border border-black/10 transition flex items-center gap-1">
+              <span>原文链接</span>
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
+          </div>
+        `;
+      } else {
+        platformBanner = `
+          <div class="p-3.5 rounded-xl bg-black/[0.03] backdrop-blur-2xl border border-black/10 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold text-sm border border-cyan-500/20">
+                论
+              </div>
+              <div>
+                <span class="font-bold text-[#1d1d1f] text-xs">${item.sourceName}</span>
+                <div class="text-[10px] text-black/50 mt-0.5">技术社区讨论精简切片 · 冗余评论与噪声已剔除</div>
+              </div>
+            </div>
+            <a href="${item.url}" target="_blank" class="px-2.5 py-1 rounded bg-black/[0.05] hover:bg-black/10 text-black/70 text-[11px] border border-black/10 transition flex items-center gap-1">
+              <span>社区原文</span>
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
+          </div>
+        `;
+      }
+
+      mount.innerHTML = `
+        <div class="space-y-6 max-w-2xl animate-pop select-text">
+          <div>
+            <h1 class="text-2xl font-bold text-[#1d1d1f] tracking-tight leading-snug">${item.title}</h1>
+            <div class="flex items-center gap-2 mt-3">
+              ${(item.tags || []).map(t => `<span class="px-2 py-0.5 rounded bg-black/[0.05] text-black/70 text-[10px] font-mono border border-black/10">#${t}</span>`).join('')}
+            </div>
+          </div>
+
+          ${platformBanner}
+
+          <!-- 核心摘要卡片 -->
+          <div class="p-4 rounded-xl bg-black/[0.03] backdrop-blur-2xl border-l-2 border-[#007AFF] border-y border-r border-black/10 text-xs text-black/70 leading-relaxed shadow-sm">
+            <strong class="text-[#007AFF]">核心摘要备忘：</strong>${item.summary}
+          </div>
+
+          <!-- 正文渲染区 -->
+          <div class="text-xs leading-relaxed space-y-4 text-black/70">
+            ${item.content.replace(/`([^`]+)`/g, '<code class="mono bg-white/50 border-black/10 px-1 py-0.5 rounded text-indigo-300">$1</code>')
+                          .replace(/### (.*)/g, '<h3 class="text-sm font-bold text-[#1d1d1f] pt-2 border-b border-black/10 pb-1">$1</h3>')
+                          .replace(/#### (.*)/g, '<h4 class="text-xs font-semibold text-[#1d1d1f] pt-1">$1</h4>')
+                          .replace(/```(rust|sql|bash)?([\s\S]*?)```/g, '<pre class="bg-black/[0.05] p-3 rounded-lg border border-black/10 mono text-[11px] text-emerald-400 overflow-x-auto my-2 select-all">$2</pre>')
+                          .replace(/> (.*)/g, '<blockquote class="border-l-2 border-black/10 pl-3 text-black/60 italic">$1</blockquote>')}
+          </div>
+        </div>
+      `;
+    }
+
+    function setKnowledgeReaderMode(id, mode) {
+      const item = STORE.knowledge.find(x => x.id === id);
+      if (item) {
+        item.readerMode = mode;
+        selectItem(id);
+      }
+    }
+
+    // ======================== 支柱 2：GitHub 项目画布渲染 ========================
+    function renderRepoCanvas(item) {
+      const mount = document.getElementById('canvas-mount');
+      mount.innerHTML = `
+        <div class="space-y-6 max-w-2xl animate-pop">
+          <!-- 仓库主标头 -->
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded bg-white/50 border border-black/10 text-black/80">
+                  <span class="w-2 h-2 rounded-full" style="background-color: ${item.langColor}"></span>
+                  <span>${item.language}</span>
+                </span>
+                <span class="px-2 py-0.5 rounded bg-black/[0.05] shadow-sm border border-black/10 text-black/60 text-[10px] font-mono">${item.license} License</span>
+              </div>
+              <h1 class="text-2xl font-bold text-[#1d1d1f] tracking-tight mt-2 font-mono">${item.name}</h1>
+              <p class="text-xs text-black/60 mt-1">${item.summary}</p>
+            </div>
+
+            <div class="flex items-center gap-3 bg-black/[0.03] backdrop-blur-2xl px-3.5 py-2 rounded-xl border border-black/10 font-mono">
+              <div class="text-center">
+                <div class="text-amber-400 font-bold text-xs">★ ${item.stars}</div>
+                <div class="text-[9px] text-black/40">Stars</div>
+              </div>
+              <div class="w-px h-6 bg-[#24242c]"></div>
+              <div class="text-center">
+                <div class="text-black/80 font-bold text-xs">🍴 ${item.forks}</div>
+                <div class="text-[9px] text-black/40">Forks</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 本地开发工作区关联卡片 (开发者极客核心能力) -->
+          <div class="p-4 rounded-xl bg-black/[0.02] border border-black/10 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-emerald-400 text-sm">💻</span>
+                <span class="font-bold text-black/80 text-xs">本地工作区路径绑定 (Local Workspace Binding)</span>
+              </div>
+              <span class="text-[10px] text-emerald-400 font-mono">● 已检测到本地源码仓库</span>
+            </div>
+
+            <div class="p-2.5 rounded-lg bg-black/[0.05] border border-black/10 flex items-center justify-between font-mono text-xs">
+              <span class="text-black/70 truncate">${item.localWorkspacePath}</span>
+              <button onclick="copyToClipboard('${item.localWorkspacePath}')" class="text-[#007AFF] hover:underline text-[10px] flex-shrink-0 ml-2">复制路径</button>
+            </div>
+
+            <div class="flex items-center gap-2 pt-1">
+              <button onclick="openInVSCode('${item.localWorkspacePath}')" class="px-3 py-1.5 rounded bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] hover:bg-[#007AFF]/80 text-white font-semibold text-xs flex items-center gap-1.5 transition shadow">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M23.15 2.587L18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.94-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352z"/></svg>
+                <span>在 VS Code 中打开工程</span>
+              </button>
+              <button onclick="showToast('已在终端启动: ' + '${item.localWorkspacePath}')" class="px-3 py-1.5 rounded bg-black/[0.05] shadow-sm border border-black/10 hover:bg-black/[0.05] text-black/80 text-xs border border-black/10 transition">
+                在终端打开
+              </button>
+              <button onclick="showToast('已在文件管理器中定位')" class="px-3 py-1.5 rounded bg-black/[0.05] shadow-sm border border-black/10 hover:bg-black/[0.05] text-black/80 text-xs border border-black/10 transition">
+                文件管理器定位
+              </button>
+            </div>
+          </div>
+
+          <!-- 最新 Release 快照 -->
+          <div class="p-4 rounded-xl bg-black/[0.02] border border-black/10 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-black/80 text-xs flex items-center gap-1.5">
+                <span class="text-amber-400">🏷️</span>
+                <span>最新 Release 快照: <code class="mono text-emerald-400 ml-1">${item.latestRelease}</code></span>
+              </span>
+              <span class="text-[10px] text-black/50 font-mono">${item.releaseDate}</span>
+            </div>
+            <pre class="bg-black/[0.05] p-3 rounded-lg border border-black/10 text-[11px] mono text-black/70 leading-relaxed overflow-x-auto select-all">${item.releaseNotes}</pre>
+          </div>
+
+          <!-- 个人实战笔记 / 踩坑 Cookbook (CodeMirror 6 态) -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-black/80 flex items-center gap-1.5">
+                <span>📓</span>
+                <span>个人实战笔记 & 避坑指南 (CodeMirror 6 本地存储)</span>
+              </span>
+              <button onclick="showToast('原型演示：保存笔记（实际持久化请使用应用）')" class="text-[#007AFF] hover:underline">保存笔记</button>
+            </div>
+            <div class="border border-black/10 rounded-xl overflow-hidden bg-black/[0.05] p-3 font-mono text-xs">
+              <textarea class="w-full bg-transparent text-black/80 outline-none resize-none leading-relaxed font-mono" rows="9">${item.cookbookNotes}</textarea>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openInVSCode(path) {
+      showToast(`已调用系统协议：code "${path}"`);
+    }
+
+    // ======================== 支柱 3：全栈凭据 & REST API 画布渲染 ========================
+    function renderCredentialCanvas(item) {
+      const mount = document.getElementById('canvas-mount');
+      const currentTab = item.activeTab || 'swagger';
+
+      if (item.family !== 'http') {
+        // SQL / NoSQL / AI 向量数据库详情视图
+        mount.innerHTML = `
+          <div class="space-y-5 max-w-2xl animate-pop">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold font-mono">
+                    📁 ${item.projectName}
+                  </span>
+                  <span class="px-2 py-0.5 rounded bg-black/[0.05] shadow-sm border border-black/10 text-black/60 text-[10px] font-mono uppercase">
+                    ${item.typeKey}
+                  </span>
+                </div>
+                <h1 class="text-xl font-bold text-[#1d1d1f] tracking-tight mt-2">${item.name}</h1>
+              </div>
+              <button onclick="copyToolboxCommand('${item.id}')" class="px-3 py-1 rounded bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] text-white text-xs font-semibold shadow">
+                复制连接命令
+              </button>
+            </div>
+
+            <!-- 结构化参数输入卡片 -->
+            <div class="p-4 rounded-xl bg-black/[0.02] border border-black/10 space-y-3">
+              <div class="flex items-center justify-between border-b border-black/10 pb-2 text-xs">
+                <span class="font-bold text-black/80">连接属性 (AES-256 加密保护)</span>
+                <span class="text-[10px] text-emerald-400">● 连接可用</span>
+              </div>
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div class="space-y-1">
+                  <label class="text-[10px] text-black/60">Host / IP</label>
+                  <input type="text" value="${item.fields.host}" readonly class="w-full h-7 px-2 rounded bg-black/[0.05] border border-black/10 mono text-black/80">
+                </div>
+                <div class="space-y-1">
+                  <label class="text-[10px] text-black/60">端口 (Port)</label>
+                  <input type="text" value="${item.fields.port}" readonly class="w-full h-7 px-2 rounded bg-black/[0.05] border border-black/10 mono text-black/80">
+                </div>
+                ${item.fields.database ? `
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-black/60">数据库名称 (Database)</label>
+                    <input type="text" value="${item.fields.database}" readonly class="w-full h-7 px-2 rounded bg-black/[0.05] border border-black/10 mono text-black/80">
+                  </div>
+                ` : ''}
+                ${item.fields.username ? `
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-black/60">登录用户名</label>
+                    <input type="text" value="${item.fields.username}" readonly class="w-full h-7 px-2 rounded bg-black/[0.05] border border-black/10 mono text-black/80">
+                  </div>
+                ` : ''}
+                <div class="space-y-1 col-span-2">
+                  <label class="text-[10px] text-black/60">认证凭证 / 密码</label>
+                  <div class="relative">
+                    <input type="password" id="field-pwd-${item.id}" value="${item.fields.password || item.fields.authPassword || 'secret'}" readonly class="w-full h-7 px-2 rounded bg-black/[0.05] border border-black/10 mono text-black/80 pr-16">
+                    <button onclick="toggleCardPassword('${item.id}')" class="absolute right-2 top-1 text-[10px] text-[#007AFF] hover:underline">显示明文</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // REST API 深度工作区
+      mount.innerHTML = `
+        <div class="space-y-5 max-w-2xl animate-pop">
+          <!-- 资产头部 -->
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold font-mono">
+                  📁 ${item.projectName}
+                </span>
+                <span class="px-2 py-0.5 rounded bg-black/[0.05] shadow-sm border border-black/10 text-black/60 text-[10px] font-mono uppercase">
+                  ${item.typeKey}
+                </span>
+              </div>
+              <h1 class="text-xl font-bold text-[#1d1d1f] tracking-tight mt-2">${item.name}</h1>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button onclick="showToast('原型演示：同步 Swagger 规范')" class="px-2.5 py-1 rounded bg-[#07c160]/10 hover:bg-[#07c160]/20 text-[#07c160] border border-[#07c160]/30 text-xs flex items-center gap-1 transition">
+                <span>同步 Swagger</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 主导航 Tab (Swagger 接口与参数工作台 / 全局通用头 / 附件) -->
+          <div class="flex items-center gap-1 p-1 rounded-lg bg-black/[0.05] border border-black/10">
+            <button onclick="switchCanvasTab('${item.id}', 'swagger')" class="px-3 py-1 rounded text-xs font-medium transition flex items-center gap-1.5 ${
+              currentTab === 'swagger' ? 'bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] text-white shadow-sm' : 'text-black/60 hover:text-[#1d1d1f]'
+            }">
+              <span>📑 接口与多维参数工作区</span>
+              <span class="px-1.5 py-0.2 rounded bg-black/[0.03] text-[10px] font-mono font-bold">${item.swaggerEndpoints ? item.swaggerEndpoints.length : 0}</span>
+            </button>
+            <button onclick="switchCanvasTab('${item.id}', 'global_headers')" class="px-3 py-1 rounded text-xs font-medium transition flex items-center gap-1.5 ${
+              currentTab === 'global_headers' ? 'bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] text-white shadow-sm' : 'text-black/60 hover:text-[#1d1d1f]'
+            }">
+              <span>🌐 全局通用请求头 (Headers)</span>
+              <span class="px-1.5 py-0.2 rounded bg-black/[0.03] text-[10px] font-mono">${item.globalHeaders ? item.globalHeaders.length : 0}</span>
+            </button>
+            <button onclick="switchCanvasTab('${item.id}', 'attachments')" class="px-3 py-1 rounded text-xs font-medium transition flex items-center gap-1.5 ${
+              currentTab === 'attachments' ? 'bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] text-white shadow-sm' : 'text-black/60 hover:text-[#1d1d1f]'
+            }">
+              <span>📎 附件与白皮书</span>
+              <span class="px-1.5 py-0.2 rounded bg-black/[0.03] text-[10px] font-mono">${item.attachments ? item.attachments.length : 0}</span>
+            </button>
+          </div>
+
+          <!-- 动态视图展现 -->
+          <div class="space-y-4">
+            ${currentTab === 'swagger' ? renderSwaggerAndParamsWorkbench(item) : currentTab === 'global_headers' ? renderGlobalHeadersTab(item) : renderAttachmentsTab(item)}
+          </div>
+        </div>
+      `;
+    }
+
+    function switchCanvasTab(itemId, tabKey) {
+      const item = STORE.credential.find(x => x.id === itemId);
+      if (item) {
+        item.activeTab = tabKey;
+        renderCredentialCanvas(item);
+      }
+    }
+
+    // 单接口多维参数工作区
+    function renderSwaggerAndParamsWorkbench(item) {
+      const endpoints = item.swaggerEndpoints || [];
+      const curIdx = item.selectedEndpointIndex || 0;
+      const currentEp = endpoints[curIdx] || endpoints[0];
+      const epTab = item.endpointTab || 'headers';
+
+      // 接口列表 Pills
+      const epPills = endpoints.map((ep, idx) => {
+        const isCur = idx === curIdx;
+        let methodClass = ep.method === 'POST' ? 'method-post' : ep.method === 'PUT' ? 'method-put' : ep.method === 'DELETE' ? 'method-delete' : 'method-get';
+        return `
+          <button onclick="selectEndpoint(${idx})" class="p-2 rounded text-left border flex items-center justify-between gap-2 transition ${
+            isCur ? 'bg-black/[0.05] border-[#007AFF] shadow-sm' : 'bg-black/[0.03] backdrop-blur-2xl border-black/10 hover:bg-black/10'
+          }">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="px-1.5 py-0.2 rounded text-[9px] font-bold font-mono ${methodClass}">${ep.method}</span>
+              <span class="mono text-black/80 text-xs font-semibold truncate">${ep.path}</span>
+            </div>
+            <span class="text-[10px] text-black/50 flex-shrink-0">${ep.tag}</span>
+          </button>
+        `;
+      }).join('');
+
+      // 组合全部 Headers (全局继承 + 接口专属)
+      const allHeaders = [
+        ...(item.globalHeaders || []).map(h => ({ ...h, isGlobal: true })),
+        ...(currentEp.customHeaders || []).map(h => ({ ...h, isGlobal: false }))
+      ];
+
+      // 选项卡内容
+      let tabContent = "";
+      if (epTab === 'headers') {
+        tabContent = `
+          <div class="space-y-2">
+            <div class="flex items-center justify-between text-[11px] text-black/60 pb-1">
+              <span>生效请求头 (${allHeaders.filter(h => h.enabled).length} 项已启用，可直接内联修改值)</span>
+              <button onclick="addNewCustomHeader()" class="text-[#007AFF] hover:underline">+ 添加接口专属 Header</button>
+            </div>
+            <div class="bg-black/[0.05] border border-black/10 rounded-lg overflow-hidden divide-y divide-black/5 text-xs">
+              ${allHeaders.map((h, hIdx) => `
+                <div class="p-2.5 flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                    <input type="checkbox" ${h.enabled ? 'checked' : ''} onchange="toggleHeaderEnabled(${hIdx}, ${h.isGlobal})" class="rounded border-black/10 text-[#007AFF] focus:ring-0">
+                    <span class="mono font-semibold text-black/80 truncate">${h.key}</span>
+                    ${h.isGlobal ? '<span class="px-1.5 py-0.2 rounded bg-[#1c1c24] text-black/60 text-[9px]">全局继承</span>' : '<span class="px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-400 text-[9px]">接口专属</span>'}
+                  </div>
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <input type="text" value="${h.value}" oninput="updateHeaderValue(${hIdx}, ${h.isGlobal}, event.target.value)" class="w-full h-6 px-2 rounded bg-black/[0.03] backdrop-blur-2xl border border-black/10 text-[#1d1d1f] mono text-[11px] focus:outline-none focus:border-[#007AFF]">
+                  </div>
+                  <span class="text-[10px] text-black/40 truncate hidden md:inline max-w-[120px]">${h.desc || ''}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      } else if (epTab === 'params') {
+        const queries = currentEp.queryParams || [];
+        const paths = currentEp.pathParams || [];
+
+        tabContent = `
+          <div class="space-y-4 text-xs">
+            ${paths.length > 0 ? `
+              <div class="space-y-1.5">
+                <span class="text-[11px] font-bold text-amber-400">Path 路径参数 (动态替换 URL 占位符)</span>
+                <div class="bg-black/[0.05] border border-black/10 rounded-lg p-2.5 space-y-2">
+                  ${paths.map((p, pIdx) => `
+                    <div class="flex items-center gap-2">
+                      <span class="mono font-semibold text-black/70 w-28 text-xs">{${p.key}}</span>
+                      <input type="text" value="${p.value}" oninput="updatePathParam(${pIdx}, event.target.value)" class="flex-1 h-7 px-2 rounded bg-black/[0.03] backdrop-blur-2xl border border-black/10 text-[#1d1d1f] mono text-xs focus:outline-none focus:border-[#007AFF]">
+                      <span class="text-[10px] text-black/50">${p.desc}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-[#007AFF]">Query URL 查询参数 (?key=value)</span>
+                <button onclick="addNewQueryParam()" class="text-[10px] text-[#007AFF] hover:underline">+ 新增 Query</button>
+              </div>
+              <div class="bg-black/[0.05] border border-black/10 rounded-lg p-2.5 space-y-2">
+                ${queries.map((q, qIdx) => `
+                  <div class="flex items-center gap-2">
+                    <input type="checkbox" ${q.enabled ? 'checked' : ''} onchange="toggleQueryEnabled(${qIdx})" class="rounded border-black/10 text-[#007AFF]">
+                    <span class="mono font-semibold text-black/70 w-28 text-xs">${q.key}</span>
+                    <input type="text" value="${q.value}" oninput="updateQueryParam(${qIdx}, event.target.value)" class="flex-1 h-7 px-2 rounded bg-black/[0.03] backdrop-blur-2xl border border-black/10 text-[#1d1d1f] mono text-xs focus:outline-none focus:border-[#007AFF]">
+                    <span class="text-[10px] text-black/50">${q.desc}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        tabContent = `
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-black/60">JSON Payload (已从 Swagger 提取并预填 Mock 模型)</span>
+              <button onclick="formatRequestBody()" class="text-xs text-[#007AFF] hover:underline">格式化 JSON</button>
+            </div>
+            <div class="border border-black/10 rounded-lg overflow-hidden bg-black/[0.05] p-3 font-mono text-xs">
+              <textarea id="endpoint-body-input" oninput="updateBodyContent(event.target.value)" class="w-full bg-transparent text-emerald-400 outline-none resize-none leading-relaxed font-mono" rows="8">${currentEp.requestBody || '{\n  // 当前 GET 请求无需 Request Body\n}'}</textarea>
+            </div>
+          </div>
+        `;
+      }
+
+      const compiledCurl = compileLiveCurl(item, currentEp, allHeaders);
+
+      return `
+        <div class="space-y-4">
+          <!-- 1. 接口选择器列表 -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-black/60 font-medium">Swagger 离线接口索引 (点击切换接口)</span>
+              <span class="text-emerald-400 text-[11px] font-mono">● ${endpoints.length} 个示例接口</span>
+            </div>
+            <div class="grid grid-cols-2 gap-1.5">
+              ${epPills}
+            </div>
+          </div>
+
+          <!-- 2. 单接口参数调试工作台 -->
+          <div class="p-4 rounded-xl bg-black/[0.02] border border-black/10 space-y-3.5">
+            <!-- 接口路径与简述 -->
+            <div class="flex items-center justify-between border-b border-black/10 pb-2.5">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono ${currentEp.method === 'POST' ? 'method-post' : 'method-get'}">${currentEp.method}</span>
+                  <span class="mono font-bold text-[#1d1d1f] text-sm">${currentEp.path}</span>
+                </div>
+                <p class="text-[11px] text-black/60 mt-0.5">${currentEp.summary}</p>
+              </div>
+
+              <div class="flex items-center gap-1.5">
+                <button onclick="sendLiveProbe()" class="px-3 py-1 rounded bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] hover:bg-[#007AFF]/80 text-white font-semibold text-xs flex items-center gap-1.5 shadow">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                  <span>发送快速探针 (Send Probe)</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 参数类别 Tab (Headers / Query&Path / Body) -->
+            <div class="flex gap-2 border-b border-black/10 pb-1 text-xs">
+              <button onclick="setEpTab('headers')" class="px-2.5 py-1 rounded font-medium transition ${epTab === 'headers' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] border border-black/10' : 'text-black/60 hover:text-[#1d1d1f]'}">
+                Headers 请求头 (${allHeaders.filter(h => h.enabled).length})
+              </button>
+              <button onclick="setEpTab('params')" class="px-2.5 py-1 rounded font-medium transition ${epTab === 'params' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] border border-black/10' : 'text-black/60 hover:text-[#1d1d1f]'}">
+                URL 参数 (Path & Query)
+              </button>
+              <button onclick="setEpTab('body')" class="px-2.5 py-1 rounded font-medium transition ${epTab === 'body' ? 'bg-black/[0.05] shadow-sm border border-black/10 text-[#1d1d1f] border border-black/10' : 'text-black/60 hover:text-[#1d1d1f]'}">
+                Body 请求体 (JSON)
+              </button>
+            </div>
+
+            <!-- 参数工作台内容 -->
+            <div>
+              ${tabContent}
+            </div>
+
+            <!-- 实时组装编译的 cURL 命令 -->
+            <div class="pt-2 border-t border-black/10 space-y-1.5">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-black/70 text-[11px] flex items-center gap-1">
+                  <span>⚡</span>
+                  <span>实时自动编译 cURL (动态注入当前所有勾选 Header 与参数)</span>
+                </span>
+                <button onclick="copyToClipboard(document.getElementById('live-curl-box').textContent.trim())" class="text-[#007AFF] hover:underline text-[11px]">复制完整命令</button>
+              </div>
+              <div id="live-curl-box" class="p-2.5 rounded bg-black/[0.05] border border-black/10 mono text-[11px] text-emerald-400 select-all overflow-x-auto whitespace-pre leading-relaxed">
+${compiledCurl}
+              </div>
+            </div>
+
+            <!-- 模拟探针执行结果浮层 -->
+            ${probeResponseMock ? `
+              <div class="p-3 rounded-lg bg-transparent border border-emerald-500/30 space-y-2 mt-2 animate-pop">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-emerald-400 flex items-center gap-1.5">
+                    <span>● HTTP 200 OK</span>
+                    <span class="text-black/60 font-normal font-mono">耗时: 38ms | 响应体大小: 428 bytes</span>
+                  </span>
+                  <span class="text-[10px] text-black/50 font-mono">内网专线网关直连</span>
+                </div>
+                <pre class="bg-black/[0.05] p-2.5 rounded text-[11px] mono text-black/70 overflow-x-auto border border-black/10">${probeResponseMock}</pre>
+              </div>
+            ` : ''}
+
+          </div>
+        </div>
+      `;
+    }
+
+    // 动态生成完整 cURL
+    function compileLiveCurl(item, ep, allHeaders) {
+      let finalPath = ep.path;
+      (ep.pathParams || []).forEach(p => {
+        finalPath = finalPath.replace(`{${p.key}}`, p.value);
+      });
+
+      const enabledQueries = (ep.queryParams || []).filter(q => q.enabled);
+      let queryString = "";
+      if (enabledQueries.length > 0) {
+        queryString = "?" + enabledQueries.map(q => `${encodeURIComponent(q.key)}=${encodeURIComponent(q.value)}`).join('&');
+      }
+
+      const fullUrl = `${item.fields.baseUrl}${finalPath}${queryString}`;
+      const headerLines = allHeaders
+        .filter(h => h.enabled)
+        .map(h => `  -H "${h.key}: ${h.value}"`)
+        .join(' \\\n');
+
+      let bodyLine = "";
+      if (ep.method !== 'GET' && ep.requestBody && ep.requestBody.trim()) {
+        try {
+          const compactJson = JSON.stringify(JSON.parse(ep.requestBody || '{}'));
+          bodyLine = ` \\\n  -d '${compactJson}'`;
+        } catch(e) {
+          bodyLine = ` \\\n  -d '${ep.requestBody.replace(/\n/g, ' ')}'`;
+        }
+      }
+
+      return `curl -X ${ep.method} "${fullUrl}" \\\n${headerLines}${bodyLine}`;
+    }
+
+    function selectEndpoint(idx) {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      if (item) {
+        item.selectedEndpointIndex = idx;
+        probeResponseMock = null;
+        renderCredentialCanvas(item);
+      }
+    }
+
+    function setEpTab(tab) {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      if (item) {
+        item.endpointTab = tab;
+        renderCredentialCanvas(item);
+      }
+    }
+
+    function toggleHeaderEnabled(idx, isGlobal) {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      if (!item) return;
+      if (isGlobal) {
+        item.globalHeaders[idx].enabled = !item.globalHeaders[idx].enabled;
+      } else {
+        const ep = item.swaggerEndpoints[item.selectedEndpointIndex || 0];
+        const customIdx = idx - item.globalHeaders.length;
+        ep.customHeaders[customIdx].enabled = !ep.customHeaders[customIdx].enabled;
+      }
+      renderCredentialCanvas(item);
+    }
+
+    function toggleQueryEnabled(qIdx) {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      const ep = item.swaggerEndpoints[item.selectedEndpointIndex || 0];
+      ep.queryParams[qIdx].enabled = !ep.queryParams[qIdx].enabled;
+      renderCredentialCanvas(item);
+    }
+
+    function updateHeaderValue(idx, isGlobal, val) {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      if (!item) return;
+      if (isGlobal) {
+        item.globalHeaders[idx].value = val;
+      } else {
+        const ep = item.swaggerEndpoints[item.selectedEndpointIndex || 0];
+        const customIdx = idx - item.globalHeaders.length;
+        ep.customHeaders[customIdx].value = val;
+      }
+      refreshLiveCurlBox(item);
+    }
+
+    function updatePathParam(pIdx, val) {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      const ep = item.swaggerEndpoints[item.selectedEndpointIndex || 0];
+      ep.pathParams[pIdx].value = val;
+      refreshLiveCurlBox(item);
+    }
+
+    function updateQueryParam(qIdx, val) {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      const ep = item.swaggerEndpoints[item.selectedEndpointIndex || 0];
+      ep.queryParams[qIdx].value = val;
+      refreshLiveCurlBox(item);
+    }
+
+    function updateBodyContent(val) {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      const ep = item.swaggerEndpoints[item.selectedEndpointIndex || 0];
+      ep.requestBody = val;
+      refreshLiveCurlBox(item);
+    }
+
+    function refreshLiveCurlBox(item) {
+      const ep = item.swaggerEndpoints[item.selectedEndpointIndex || 0];
+      const allHeaders = [
+        ...(item.globalHeaders || []).map(h => ({ ...h, isGlobal: true })),
+        ...(ep.customHeaders || []).map(h => ({ ...h, isGlobal: false }))
+      ];
+      const compiled = compileLiveCurl(item, ep, allHeaders);
+      const box = document.getElementById('live-curl-box');
+      if (box) box.textContent = compiled;
+    }
+
+    function formatRequestBody() {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      const ep = item.swaggerEndpoints[item.selectedEndpointIndex || 0];
+      if (!ep.requestBody || !ep.requestBody.trim()) {
+        showToast("当前请求无 Body 内容");
+        return;
+      }
+      try {
+        ep.requestBody = JSON.stringify(JSON.parse(ep.requestBody), null, 2);
+        const bodyInput = document.getElementById('endpoint-body-input');
+        if (bodyInput) bodyInput.value = ep.requestBody;
+        refreshLiveCurlBox(item);
+        showToast("JSON 格式化成功");
+      } catch (e) {
+        showToast("JSON 语法解析失败，请检查格式");
+      }
+    }
+
+    function addNewQueryParam() {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      const ep = item.swaggerEndpoints[item.selectedEndpointIndex || 0];
+      if (!ep.queryParams) ep.queryParams = [];
+      ep.queryParams.push({
+        key: "newParam",
+        value: "sampleValue",
+        enabled: true,
+        desc: "自定义 Query 参数"
+      });
+      renderCredentialCanvas(item);
+      showToast("已追加 Query 参数");
+    }
+
+    function addNewCustomHeader() {
+      const item = STORE.credential.find(x => x.id === currentSelectedId);
+      const ep = item.swaggerEndpoints[item.selectedEndpointIndex || 0];
+      if (!ep.customHeaders) ep.customHeaders = [];
+      ep.customHeaders.push({
+        key: "X-Custom-Trace-Tag",
+        value: "debug_session_2026",
+        enabled: true,
+        desc: "动态临时 Header"
+      });
+      renderCredentialCanvas(item);
+      showToast("已追加接口专属 Header 参数");
+    }
+
+    function sendLiveProbe() {
+      showToast("探针请求已发送...");
+      setTimeout(() => {
+        probeResponseMock = JSON.stringify({
+          code: 0,
+          message: "SUCCESS",
+          traceId: "trace_99182a001928_prod",
+          data: {
+            orderId: "ord_20260908_88912",
+            status: "CREATED",
+            payAmount: 398.00,
+            createdAt: "2026-09-09T18:32:00Z"
+          }
+        }, null, 2);
+        const item = STORE.credential.find(x => x.id === currentSelectedId);
+        renderCredentialCanvas(item);
+      }, 300);
+    }
+
+    // 全局 Headers Tab
+    function renderGlobalHeadersTab(item) {
+      const gHeaders = item.globalHeaders || [];
+      return `
+        <div class="space-y-4">
+          <div class="p-3.5 rounded-lg bg-black/[0.02] border border-black/10 flex items-center justify-between">
+            <div>
+              <h4 class="font-bold text-black/80 text-xs">全局服务默认请求头 (Service-Level Shared Headers)</h4>
+              <p class="text-[11px] text-black/60 mt-0.5">在此配置的 Header 会自动穿透继承给所有接口，避免每个接口重复填写。</p>
+            </div>
+            <button onclick="showToast('支持新增全局头')" class="px-3 py-1 rounded bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] text-white text-xs font-medium">+ 新增全局头</button>
+          </div>
+
+          <div class="bg-black/[0.05] border border-black/10 rounded-xl overflow-hidden divide-y divide-black/5 text-xs">
+            ${gHeaders.map(h => `
+              <div class="p-3 flex items-center justify-between">
+                <div>
+                  <span class="mono font-bold text-black/80">${h.key}</span>
+                  <span class="mono text-emerald-400 ml-2">${h.value}</span>
+                </div>
+                <span class="text-[11px] text-black/60">${h.desc}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // 附件 Tab
+    function renderAttachmentsTab(item) {
+      const atts = item.attachments || [];
+      return `
+        <div class="space-y-3">
+          <div class="p-3 rounded-lg bg-black/[0.02] border border-black/10 flex items-center justify-between">
+            <span class="text-xs text-black/70 font-medium">关联本地离线白皮书与 Postman 导包</span>
+            <button onclick="showToast('上传附件')" class="px-2.5 py-1 rounded bg-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.3)] text-white text-xs">+ 挂载附件</button>
+          </div>
+          <div class="space-y-2">
+            ${atts.map(a => `
+              <div class="p-3 rounded-lg bg-black/[0.05] border border-black/10 flex items-center justify-between">
+                <div>
+                  <span class="font-semibold text-black/80 text-xs">${a.name}</span>
+                  <span class="text-[10px] text-black/60 font-mono ml-2">(${a.size})</span>
+                  <p class="text-[11px] text-black/50 mt-0.5">${a.memo}</p>
+                </div>
+                <button onclick="showToast('已在本地打开: ' + '${a.name}')" class="px-2.5 py-1 rounded bg-black/[0.05] shadow-sm border border-black/10 text-xs text-black/80">打开</button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderEmptyCanvas() {
+      const mount = document.getElementById('canvas-mount');
+      mount.innerHTML = `
+        <div class="h-full flex flex-col items-center justify-center text-center p-8 text-black/50 space-y-2">
+          <div class="text-3xl">📂</div>
+          <p class="text-xs">暂无选中的项目或条目</p>
+        </div>
+      `;
+    }
+
+    // 辅助交互与筛选函数
+    function filterCredByProject(projId) {
+      activeCredProject = projId;
+      renderLeftDimensionTree();
+      const list = getFilteredItems();
+      if (list[0]) selectItem(list[0].id);
+      else renderMiddleList();
+    }
+
+    function setCredFamilyFilter(fam) {
+      activeCredFamily = fam;
+      renderSecondaryFilterBar();
+      const list = getFilteredItems();
+      if (list[0]) selectItem(list[0].id);
+      else renderMiddleList();
+    }
+
+    function setKnowledgePlatformFilter(plat) {
+      activeKnowledgePlatform = plat;
+      renderLeftDimensionTree();
+      renderSecondaryFilterBar();
+      const list = getFilteredItems();
+      if (list[0]) selectItem(list[0].id);
+      else renderMiddleList();
+    }
+
+    function setRepoLanguageFilter(lang) {
+      activeRepoLanguage = lang;
+      renderLeftDimensionTree();
+      renderSecondaryFilterBar();
+      const list = getFilteredItems();
+      if (list[0]) selectItem(list[0].id);
+      else renderMiddleList();
+    }
+
+    function onSearchInput(e) {
+      renderMiddleList(e.target.value);
+    }
+
+    function focusSearch() {
+      document.getElementById('keyword-search-input').focus();
+    }
+
+    function toggleCardPassword(id) {
+      const inp = document.getElementById('field-pwd-' + id);
+      if (!inp) return;
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+      showToast(inp.type === 'text' ? '密码明文已显示' : '密码已隐藏');
+    }
+
+    function copyToolboxCommand(id) {
+      const item = STORE.credential.find(x => x.id === id);
+      if (!item) return;
+      let cmd = "";
+      if (item.typeKey === 'mysql') cmd = `mysql -h ${item.fields.host} -P ${item.fields.port} -u ${item.fields.username} -p${item.fields.password} ${item.fields.database}`;
+      else if (item.typeKey === 'redis') cmd = `redis-cli -h ${item.fields.host} -p ${item.fields.port} -a "${item.fields.authPassword}"`;
+      else cmd = `curl -s "${item.fields.baseUrl}"`;
+      copyToClipboard(cmd);
+    }
+
+    function toggleLockVault() {
+      isVaultLocked = !isVaultLocked;
+      const dot = document.getElementById('lock-dot');
+      const txt = document.getElementById('lock-txt');
+      if (isVaultLocked) {
+        dot.className = "w-1.5 h-1.5 rounded-full bg-rose-500";
+        txt.textContent = "已锁定";
+        showToast("本地金库已闭锁 (内存密文已擦除)");
+      } else {
+        dot.className = "w-1.5 h-1.5 rounded-full bg-emerald-500";
+        txt.textContent = "金库已解密";
+        showToast("本地金库已解密 (AES-256-GCM)");
+      }
+    }
+
+    function copyToClipboard(txt) {
+      navigator.clipboard.writeText(txt);
+      showToast("已复制到系统剪贴板 (30秒后自动清除)");
+    }
+
+    function showToast(text) {
+      const t = document.getElementById('toast');
+      document.getElementById('toast-text').textContent = text;
+      t.classList.remove('opacity-0', 'translate-y-2');
+      t.classList.add('opacity-100', 'translate-y-0');
+      setTimeout(() => {
+        t.classList.remove('opacity-100', 'translate-y-0');
+        t.classList.add('opacity-0', 'translate-y-2');
+      }, 2500);
+    }
+
+    function openIngestModal() {
+      document.getElementById('ingest-modal').classList.remove('hidden');
+    }
+
+    function closeIngestModal() {
+      document.getElementById('ingest-modal').classList.add('hidden');
+    }
+
+    function presetIngest(type) {
+      const inp = document.getElementById('ingest-url-input');
+      if (type === 'wechat') inp.value = "https://mp.weixin.qq.com/s/sample_high_concurrency_architecture";
+      else if (type === 'github') inp.value = "https://github.com/hyperium/tonic";
+      else inp.value = "https://api.mall.internal.net/v3/api-docs";
+    }
+
+    function startIngestPipeline() {
+      const url = document.getElementById('ingest-url-input').value.trim();
+      if (!url) {
+        showToast("请输入有效 URL");
+        return;
+      }
+      closeIngestModal();
+      showToast("抓取分析管线启动中...");
+
+      setTimeout(() => {
+        if (url.includes('github.com')) {
+          STORE.repo.push({
+            id: "repo-" + Date.now(),
+            name: "hyperium/tonic",
+            owner: "hyperium",
+            repoName: "tonic",
+            language: "Rust",
+            langColor: "#dea584",
+            stars: "8.9k",
+            forks: "720",
+            watchers: "95",
+            license: "MIT",
+            latestRelease: "v0.11.0",
+            releaseDate: "2026-09-02",
+            localWorkspacePath: "d:/develop/coding/rust/tonic-demo",
+            summary: "A native gRPC over HTTP/2 implementation focused on high performance and interoperability.",
+            releaseNotes: "### v0.11.0\n- HTTP/2 stream multiplexing optimization.\n- Protoc code generator improvements.",
+            cookbookNotes: "# Tonic gRPC 备忘\n使用 tower 中间件处理认证与限流。"
+          });
+          updateCounts();
+          switchPillar('repo', STORE.repo[STORE.repo.length - 1].id);
+          showToast("GitHub 仓库已成功收录！");
+        } else {
+          STORE.knowledge.push({
+            id: "know-" + Date.now(),
+            platform: "wechat",
+            platformName: "微信公众号",
+            sourceName: "阿里技术",
+            author: "高可用架构专家",
+            title: "微服务高并发治理：熔断、降级与流量整形最佳实战",
+            date: "2026-09-09",
+            url: url,
+            imagesCount: 4,
+            tags: ["微服务", "高可用", "Sentinel"],
+            readerMode: "flow",
+            summary: "微信公众号离线快送：系统过载自适应保护算法，滑动窗口限流实现细节。",
+            content: "### 离线内容\n自适应限流根据 CPU 使用率动态调整入口流量。"
+          });
+          updateCounts();
+          switchPillar('knowledge', STORE.knowledge[STORE.knowledge.length - 1].id);
+          showToast("微信文章已完整离线抓取并转存图片！");
+        }
+      }, 600);
+    }
+
+    function openAddModal() {
+      showToast("新建凭据/条目对话框已就绪");
+    }
+
+    window.onload = init;
+  </script>
+</div></body>
+</html>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <title>InfoHub</title>
+  <rect x="1" y="1" width="30" height="30" rx="8" fill="#007AFF"/>
+  <g fill="#FFFFFF">
+    <rect x="8" y="8" width="4" height="4" rx="1.2"/>
+    <path d="M9.2 14H20V9.2C20 8.4 20.4 8 21.2 8H22.8C23.6 8 24 8.4 24 9.2V22.8C24 23.6 23.6 24 22.8 24H21.2C20.4 24 20 23.6 20 22.8V18H12V22.8C12 23.6 11.6 24 10.8 24H9.2C8.4 24 8 23.6 8 22.8V15.2C8 14.4 8.4 14 9.2 14Z"/>
+  </g>
+</svg>

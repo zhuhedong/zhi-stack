@@ -1,0 +1,34 @@
+# Standalone deployment file: run with -f compose.external-pg.yaml only.
+# Connects over the default Docker network to an existing remote PostgreSQL.
+# See docs/deploy-external-pg.md for database TLS and desktop access.
+services:
+  app:
+    image: ${INFOHUB_IMAGE:-infohub:local}
+    build: .
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      PGHOST: ${PGHOST:?Set PGHOST in .env.external-pg}
+      PGPORT: ${PGPORT:-5432}
+      PGUSER: ${PGUSER:?Set PGUSER in .env.external-pg}
+      PGPASSWORD: ${PGPASSWORD:?Set PGPASSWORD in .env.external-pg}
+      PGDATABASE: ${PGDATABASE:?Set PGDATABASE in .env.external-pg}
+      PGSSLMODE: ${PGSSLMODE:-verify-full}
+      BIND_ADDR: 0.0.0.0:3210
+      FRONTEND_DIR: /app/dist
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3210,http://127.0.0.1:3210,http://tauri.localhost,https://tauri.localhost,tauri://localhost}
+      ALLOWED_PRIVATE_HOSTS: ${ALLOWED_PRIVATE_HOSTS:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      RUST_LOG: ${RUST_LOG:-infohub_server=info}
+      FILE_STORAGE: ${FILE_STORAGE:-local}
+      LOCAL_STORAGE_PATH: /data/files
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+    volumes:
+      - infohub_files:/data/files
+    ports:
+      - '${INFOHUB_BIND_IP:-127.0.0.1}:${INFOHUB_PORT:-3210}:3210'
+volumes:
+  infohub_files:
