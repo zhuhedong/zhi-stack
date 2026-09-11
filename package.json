@@ -1,7 +1,7 @@
 {
   "name": "zhi-stack",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -21,7 +21,7 @@
     "test:docker-smoke": "node --test scripts/docker-smoke.test.mjs",
     "verify:release": "node scripts/verify-release.mjs",
     "test:request": "node --experimental-strip-types --test scripts/request.test.ts",
-    "test:ui": "vitest run scripts/ui.test.tsx",
+    "test:ui": "vitest run scripts/ui.test.tsx scripts/confirmation.test.tsx",
     "test:connection": "vitest run scripts/server-connection.test.ts scripts/server-settings.test.tsx",
     "tauri": "tauri"
   },

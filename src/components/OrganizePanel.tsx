@@ -1,3 +1,4 @@
+import { Form } from './Form';
 import { useEffect, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
 import { Modal } from './Modal';
@@ -116,7 +117,7 @@ export function OrganizePanel({
         )}
         {tab === 'views' && (
           <>
-            <form
+            <Form
               className="maintenance-form"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -141,7 +142,7 @@ export function OrganizePanel({
               <button className="primary" disabled={busy}>
                 保存筛选
               </button>
-            </form>
+            </Form>
             {views.length === 0 && <p className="inline-empty">还没有保存的筛选。</p>}
             {views.map((view) => (
               <div className="maintenance-row" key={view.id}>
@@ -166,7 +167,7 @@ export function OrganizePanel({
           </>
         )}
         {tab === 'tags' && (
-          <form
+          <Form
             className="maintenance-form"
             onSubmit={(e) => {
               e.preventDefault();
@@ -213,7 +214,7 @@ export function OrganizePanel({
             <button className="primary" disabled={busy || !selectedTags.length}>
               合并或重命名
             </button>
-          </form>
+          </Form>
         )}
         {tab === 'batch' && (
           <div className="maintenance-form">

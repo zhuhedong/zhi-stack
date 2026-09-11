@@ -1,3 +1,4 @@
+import { Form } from './components/Form';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Check, CircleAlert, LoaderCircle, LockKeyhole, X } from 'lucide-react';
 import { Header } from './components/Header';
@@ -7,7 +8,6 @@ import { Workspace } from './components/Workspace';
 import { AuthScreen } from './components/AuthScreen';
 import { DataManager } from './components/DataManager';
 import { VersionHistory } from './components/VersionHistory';
-import { ProjectHub } from './components/ProjectHub';
 import { OrganizePanel, type SavedFilter } from './components/OrganizePanel';
 import { TaskCenter } from './components/TaskCenter';
 import { GettingStarted } from './components/GettingStarted';
@@ -19,13 +19,18 @@ import { ContextMenu, type MenuCommand } from './components/ContextMenu';
 import { openSource } from './components/SourceLink';
 import { isDesktop } from './lib/platform';
 import { api, copyText, errorMessage, saveItem, setToken } from './lib/api';
+import { useConfirm } from './lib/confirmation';
 import type { Item, ListResult, Pillar } from './types';
 const InsightsPanel = lazy(() =>
   import('./components/InsightsPanel').then((module) => ({ default: module.InsightsPanel })),
 );
+const ProjectHub = lazy(() =>
+  import('./components/ProjectHub').then((module) => ({ default: module.ProjectHub })),
+);
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false);
+  const confirm = useConfirm(authenticated);
   const [serverSettings, setServerSettings] = useState(false);
   const [unlocked, setUnlocked] = useState(true);
   const [pillar, setPillar] = useState<Pillar>('credential');
@@ -100,7 +105,15 @@ function App() {
   }, [selected]);
   const notify = useCallback((message: string, error = false) => setToast({ text: message, error }), []);
   const reload = () => setTick((t) => t + 1);
-  const mayLeave = () => !dirtyRef.current || window.confirm('当前内容尚未保存，放弃修改并继续？');
+  const mayLeave = async () =>
+    !dirtyRef.current ||
+    (await confirm({
+      title: '放弃未保存的修改',
+      description: '当前内容尚未保存，确认放弃修改并继续？',
+      confirmLabel: '放弃修改',
+      cancelLabel: '继续编辑',
+      danger: true,
+    }));
   const clearDraft = () => {
     dirtyRef.current = false;
   };
@@ -147,16 +160,27 @@ function App() {
   }, [toast]);
   useEffect(() => {
     let stayOnExpired = false;
-    const expired = () => {
-      if (stayOnExpired) return;
+    let checkingExpiry = false;
+    let active = true;
+    const expired = async () => {
+      if (stayOnExpired || checkingExpiry) return;
+      checkingExpiry = true;
       if (
         (dirtyRef.current || modalDraftRef.current.dirty) &&
-        !window.confirm('会话已失效，放弃未保存内容并重新登录？')
+        !(await confirm({
+          title: '登录已过期',
+          description: '会话已失效，重新登录将离开当前编辑。可以先留下来复制未保存的内容。',
+          confirmLabel: '重新登录',
+          cancelLabel: '保留当前编辑',
+        }))
       ) {
+        checkingExpiry = false;
+        if (!active) return;
         stayOnExpired = true;
         notify('会话已失效。请先保存本地内容，然后重新登录。', true);
         return;
       }
+      if (!active) return;
       setToken('');
       setAuthenticated(false);
       setItem(null);
@@ -172,32 +196,48 @@ function App() {
     window.addEventListener('infohub:unauthorized', expired);
     window.addEventListener('infohub:locked', lockUi);
     return () => {
+      active = false;
       window.removeEventListener('infohub:notice', notice);
       window.removeEventListener('infohub:unauthorized', expired);
       window.removeEventListener('infohub:locked', lockUi);
     };
-  }, [lockUi, notify]);
+  }, [authenticated, lockUi, notify, confirm]);
   useEffect(() => {
     if (!authenticated || !unlocked) return;
     let timer: ReturnType<typeof setTimeout>;
     let lastActivity = Date.now();
     let lastSynced = lastActivity;
+    let locking = false;
     const abort = new AbortController();
     const reset = () => {
       lastActivity = Date.now();
       clearTimeout(timer);
       timer = setTimeout(
-        () => {
-          if (
-            wouldLoseCredentialDraft() &&
-            !window.confirm('已长时间未操作。锁定金库将放弃未保存的凭证修改，继续锁定？')
-          ) {
-            reset();
-            return;
+        async () => {
+          if (locking || abort.signal.aborted) return;
+          locking = true;
+          try {
+            if (
+              wouldLoseCredentialDraft() &&
+              !(await confirm({
+                title: '锁定密码库',
+                description: '已长时间未操作。锁定密码库将离开当前凭证编辑，未保存的修改会丢失。',
+                confirmLabel: '放弃修改并锁定',
+                cancelLabel: '继续编辑',
+                danger: true,
+              }))
+            ) {
+              if (!abort.signal.aborted) reset();
+              return;
+            }
+            if (abort.signal.aborted) return;
+            await api('/vault/lock', { method: 'POST' });
+            if (!abort.signal.aborted) lockUi();
+          } catch {
+            if (!abort.signal.aborted) notify('锁定金库失败，当前会话仍保持解锁。', true);
+          } finally {
+            locking = false;
           }
-          void api('/vault/lock', { method: 'POST' })
-            .then(() => lockUi())
-            .catch(() => notify('锁定金库失败，当前会话仍保持解锁。', true));
         },
         15 * 60 * 1000,
       );
@@ -221,8 +261,11 @@ function App() {
       window.removeEventListener('pointerdown', reset);
       window.removeEventListener('keydown', reset);
     };
-  }, [authenticated, unlocked, lockUi, notify]);
+  }, [authenticated, unlocked, lockUi, notify, confirm]);
   useEffect(() => {
+    // Browsers require their own prompt when a page is refreshed or closed.
+    // The desktop window uses the application dialog below.
+    if (isDesktop) return;
     const prevent = (event: BeforeUnloadEvent) => {
       if (dirtyRef.current || modalDraftRef.current.dirty) event.preventDefault();
     };
@@ -232,15 +275,33 @@ function App() {
   useEffect(() => {
     if (!isDesktop) return;
     let disposed = false;
+    let closing = false;
     let unlisten: (() => void) | undefined;
     void import('@tauri-apps/api/window')
       .then(async ({ getCurrentWindow }) => {
-        const stop = await getCurrentWindow().onCloseRequested((event) => {
-          if (
-            (dirtyRef.current || modalDraftRef.current.dirty) &&
-            !window.confirm('当前内容尚未保存，放弃修改并关闭窗口？')
-          )
+        const currentWindow = getCurrentWindow();
+        const stop = await currentWindow.onCloseRequested(async (event) => {
+          if (closing) {
             event.preventDefault();
+            return;
+          }
+          if (!dirtyRef.current && !modalDraftRef.current.dirty) return;
+          event.preventDefault();
+          closing = true;
+          try {
+            const accepted = await confirm({
+              title: '关闭 InfoHub',
+              description: '当前内容尚未保存，确认放弃修改并关闭窗口？',
+              confirmLabel: '放弃修改并关闭',
+              cancelLabel: '继续编辑',
+              danger: true,
+            });
+            if (accepted && !disposed) await currentWindow.destroy();
+          } catch {
+            if (!disposed) notify('窗口未能关闭，请稍后重试。', true);
+          } finally {
+            closing = false;
+          }
         });
         if (disposed) stop();
         else unlisten = stop;
@@ -255,7 +316,7 @@ function App() {
       disposed = true;
       unlisten?.();
     };
-  }, []);
+  }, [confirm, notify]);
   useEffect(() => {
     if (!authenticated) return;
     const abort = new AbortController();
@@ -379,8 +440,8 @@ function App() {
     void load();
     return () => abort.abort();
   }, [authenticated, selected, canReadSelected, detailTick]);
-  const selectItem = (next: Pick<Item, 'id' | 'kind'>) => {
-    if (selected?.id !== next.id && !mayLeave()) return;
+  const selectItem = async (next: Pick<Item, 'id' | 'kind'>) => {
+    if (selected?.id !== next.id && !(await mayLeave())) return;
     if (selected?.id !== next.id) {
       clearDraft();
       setSelected({ id: next.id, kind: next.kind });
@@ -392,8 +453,8 @@ function App() {
     }
     setMobileDetail(true);
   };
-  const switchPillar = (next: Pillar) => {
-    if (!mayLeave()) return;
+  const switchPillar = async (next: Pillar) => {
+    if (!(await mayLeave())) return;
     clearDraft();
     setPillar(next);
     setSelected(null);
@@ -410,13 +471,13 @@ function App() {
     setSidebarOpen(false);
     setMobileDetail(false);
   };
-  const add = () => {
-    if (!mayLeave()) return;
+  const add = async () => {
+    if (!(await mayLeave())) return;
     if (pillar === 'credential' && !unlocked) showModal('unlock');
     else showModal('add');
   };
-  const ingest = () => {
-    if (!mayLeave()) return;
+  const ingest = async () => {
+    if (!(await mayLeave())) return;
     setIngestUrl('');
     showModal('ingest');
   };
@@ -428,7 +489,7 @@ function App() {
   useEffect(() => {
     if (!authenticated) return;
     const keydown = (event: KeyboardEvent) => {
-      if (modal) return;
+      if (modal || document.querySelector('dialog[open]')) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
         event.preventDefault();
         focusSearch();
@@ -453,16 +514,18 @@ function App() {
         );
       }
     };
-    const paste = (event: ClipboardEvent) => {
+    const paste = async (event: ClipboardEvent) => {
       if (
         modal ||
+        document.querySelector('dialog[open]') ||
         (event.target instanceof Element &&
           event.target.closest('input,textarea,select,[contenteditable=true]'))
       )
         return;
       const text = event.clipboardData?.getData('text').trim() || '';
-      if (/^https?:\/\/\S+$/.test(text) && mayLeave()) {
+      if (/^https?:\/\/\S+$/.test(text)) {
         event.preventDefault();
+        if (!(await mayLeave())) return;
         setIngestUrl(text);
         showModal('ingest');
       }
@@ -506,7 +569,7 @@ function App() {
     setDetailTick((v) => v + 1);
   }
   async function refreshItem() {
-    if (!item || !mayLeave()) return;
+    if (!item || !(await mayLeave())) return;
     await refreshEntry(item);
   }
   async function star() {
@@ -529,12 +592,14 @@ function App() {
     }
   }
   async function refreshEntry(entry: Item) {
-    if (selected?.id !== entry.id && !mayLeave()) return;
+    if (selected?.id !== entry.id && !(await mayLeave())) return;
     if (
       entry.kind === 'knowledge' &&
-      !window.confirm(
-        '重新同步会更新已保存的正文和图片。当前内容将保留在“版本历史”中，可随时恢复。继续同步？',
-      )
+      !(await confirm({
+        title: '重新同步文章',
+        description: '重新同步会更新正文和图片，当前内容将保留在“版本历史”中，可随时恢复。',
+        confirmLabel: '继续同步',
+      }))
     )
       return;
     setBusy(true);
@@ -570,8 +635,8 @@ function App() {
     commands.push({ id: 'delete', label: '删除', danger: true });
     return commands;
   }
-  function openListMenu(entry: Item, x: number, y: number) {
-    if (selected?.id !== entry.id && !mayLeave()) return;
+  async function openListMenu(entry: Item, x: number, y: number) {
+    if (selected?.id !== entry.id && !(await mayLeave())) return;
     if (selected?.id !== entry.id) {
       clearDraft();
       setSelected({ id: entry.id, kind: entry.kind });
@@ -611,7 +676,7 @@ function App() {
         return;
       }
       if (id === 'edit') {
-        if (selected?.id !== entry.id && !mayLeave()) return;
+        if (selected?.id !== entry.id && !(await mayLeave())) return;
         const full = await fullItem(entry);
         setEditItem(full);
         setSelected({ id: full.id, kind: full.kind });
@@ -632,7 +697,7 @@ function App() {
       showModal('unlock');
       return;
     }
-    if (selected?.kind === 'credential' && !mayLeave()) return;
+    if (selected?.kind === 'credential' && !(await mayLeave())) return;
     setBusy(true);
     try {
       await api('/vault/lock', { method: 'POST' });
@@ -644,7 +709,7 @@ function App() {
     }
   }
   async function logout(openSettings = false) {
-    if (!mayLeave()) return;
+    if (!(await mayLeave())) return;
     try {
       await api('/auth/logout', { method: 'POST', signal: AbortSignal.timeout(5000) });
     } catch {
@@ -714,8 +779,8 @@ function App() {
   return (
     <AppFrame showDetail={mobileDetail}>
       <Header
-        onManage={() => {
-          if (mayLeave()) showModal('data');
+        onManage={async () => {
+          if (await mayLeave()) showModal('data');
         }}
         unlocked={unlocked}
         busy={busy}
@@ -730,25 +795,25 @@ function App() {
       <GettingStarted
         tick={tick + guideTick}
         onIngest={ingest}
-        onProjects={() => {
-          if (mayLeave()) showModal('projects');
+        onProjects={async () => {
+          if (await mayLeave()) showModal('projects');
         }}
         onSearch={focusSearch}
       />
       <div className="app-body">
         <Sidebar
-          onTasks={() => {
-            if (mayLeave()) showModal('tasks');
+          onTasks={async () => {
+            if (await mayLeave()) showModal('tasks');
           }}
-          onInsights={() => {
-            if (mayLeave()) showModal('insights');
+          onInsights={async () => {
+            if (await mayLeave()) showModal('insights');
           }}
           taskCount={activity.active + activity.unread}
-          onProjects={() => {
-            if (mayLeave()) showModal('projects');
+          onProjects={async () => {
+            if (await mayLeave()) showModal('projects');
           }}
-          onOrganize={() => {
-            if (mayLeave()) {
+          onOrganize={async () => {
+            if (await mayLeave()) {
               setBatchIds([]);
               showModal('organize');
             }
@@ -780,8 +845,8 @@ function App() {
             setSort(value);
             setLimit(100);
           }}
-          onOrganize={(ids) => {
-            if (mayLeave()) {
+          onOrganize={async (ids) => {
+            if (await mayLeave()) {
               setBatchIds(ids);
               showModal('organize');
             }
@@ -824,8 +889,8 @@ function App() {
         />
         <Workspace
           onOpen={selectItem}
-          onHistory={() => {
-            if (mayLeave()) showModal('history');
+          onHistory={async () => {
+            if (await mayLeave()) showModal('history');
           }}
           item={item}
           selectedKind={selected?.kind}
@@ -834,8 +899,8 @@ function App() {
           unlocked={unlocked}
           busy={busy}
           viewEpoch={viewEpoch}
-          onEdit={() => {
-            if (mayLeave()) {
+          onEdit={async () => {
+            if (await mayLeave()) {
               setEditItem(null);
               showModal('edit');
             }
@@ -897,28 +962,36 @@ function App() {
         />
       )}
       {modal === 'projects' && (
-        <ProjectHub
-          onClose={() => setModal(null)}
-          onChanged={() => {
-            clearDraft();
-            reload();
-            setDetailTick((v) => v + 1);
-          }}
-          onOpen={(entry) => {
-            clearDraft();
-            setGlobal(true);
-            setScopeProject(entry.project);
-            setQuery('');
-            setCategory('all');
-            setDimension('all');
-            setView('all');
-            setTagFilter(undefined);
-            setFavorite(false);
-            setLimit(100);
-            selectItem(entry);
-            setModal(null);
-          }}
-        />
+        <Suspense
+          fallback={
+            <Modal title="项目总览" onClose={() => setModal(null)}>
+              <div className="modal-body">正在加载项目…</div>
+            </Modal>
+          }
+        >
+          <ProjectHub
+            onClose={() => setModal(null)}
+            onChanged={() => {
+              clearDraft();
+              reload();
+              setDetailTick((v) => v + 1);
+            }}
+            onOpen={(entry) => {
+              clearDraft();
+              setGlobal(true);
+              setScopeProject(entry.project);
+              setQuery('');
+              setCategory('all');
+              setDimension('all');
+              setView('all');
+              setTagFilter(undefined);
+              setFavorite(false);
+              setLimit(100);
+              selectItem(entry);
+              setModal(null);
+            }}
+          />
+        </Suspense>
       )}
       {modal === 'organize' && (
         <OrganizePanel
@@ -1027,7 +1100,7 @@ function App() {
             }
           }}
         >
-          <form onSubmit={unlock}>
+          <Form onSubmit={unlock}>
             <div className="modal-body">
               <div className="unlock-description">
                 <LockKeyhole size={24} />
@@ -1065,7 +1138,7 @@ function App() {
                 {busy && <LoaderCircle className="spin" size={13} />}解锁金库
               </button>
             </div>
-          </form>
+          </Form>
         </Modal>
       )}
       {modal === 'delete' && (pendingDelete || item) && (

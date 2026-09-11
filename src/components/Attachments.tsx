@@ -3,7 +3,9 @@ import { Download, File, LoaderCircle, Paperclip, Trash2 } from 'lucide-react';
 import type { Attachment } from '../types';
 import { sizeLabel } from '../types';
 import { api, downloadBlob, errorMessage, request } from '../lib/api';
+import { useConfirm } from '../lib/confirmation';
 export function Attachments({ id }: { id: string }) {
+  const confirm = useConfirm(id);
   const [files, setFiles] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -68,7 +70,15 @@ export function Attachments({ id }: { id: string }) {
     }
   }
   async function remove(file: Attachment) {
-    if (!window.confirm(`永久删除附件“${file.name}”？`)) return;
+    if (
+      !(await confirm({
+        title: '删除附件',
+        description: `永久删除附件「${file.name}」？删除后无法恢复。`,
+        confirmLabel: '删除附件',
+        danger: true,
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await api(`/attachments/${file.id}`, { method: 'DELETE' });

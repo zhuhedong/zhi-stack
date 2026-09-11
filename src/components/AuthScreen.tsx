@@ -1,3 +1,4 @@
+import { Form } from './Form';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowRight, BookOpen, Radar, LockKeyhole, LoaderCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { api, API_BASE, errorMessage, initializeServer, setToken } from '../lib/api';
@@ -188,7 +189,7 @@ export function AuthScreen({
             />
           ) : configurationLoaded ? (
             <>
-              <form onSubmit={submit}>
+              <Form onSubmit={submit}>
                 <label>
                   主密码
                   <input
@@ -235,7 +236,7 @@ export function AuthScreen({
                         ? '创建并进入工作台'
                         : '解锁工作台'}
                 </button>
-              </form>
+              </Form>
               {initialized === null && error && (
                 <button className="text-button" onClick={() => setRefresh((v) => v + 1)}>
                   <RefreshCw size={13} />

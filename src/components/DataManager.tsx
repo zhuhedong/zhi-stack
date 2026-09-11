@@ -1,3 +1,4 @@
+import { Form } from './Form';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArchiveRestore, Download, KeyRound, LoaderCircle, RefreshCw, Trash2 } from 'lucide-react';
 import { api, downloadBlob, errorMessage, request, setToken } from '../lib/api';
@@ -55,7 +56,7 @@ export function RestoreForm({
     }
   }
   return (
-    <form onSubmit={restore} className="maintenance-form">
+    <Form onSubmit={restore} className="maintenance-form">
       <fieldset disabled={busy}>
         <legend>从完整备份恢复</legend>
         <p className="muted">
@@ -109,7 +110,7 @@ export function RestoreForm({
           {busy ? '正在校验并恢复…' : '恢复备份'}
         </button>
       </fieldset>
-    </form>
+    </Form>
   );
 }
 
@@ -214,7 +215,7 @@ export function DataManager({
         )}
         {tab === 'backup' && (
           <>
-            <form
+            <Form
               className="maintenance-form"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -251,7 +252,7 @@ export function DataManager({
               <button className="primary" disabled={busy}>
                 {busy ? <LoaderCircle className="spin" size={14} /> : <Download size={14} />}下载完整备份
               </button>
-            </form>
+            </Form>
             <div className="run-list">
               <h3>最近操作</h3>
               {runs.length === 0 ? (
@@ -328,7 +329,7 @@ export function DataManager({
               </div>
             ))}
             {purge && (
-              <form
+              <Form
                 className="maintenance-form"
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -361,12 +362,12 @@ export function DataManager({
                     确认永久删除
                   </button>
                 </div>
-              </form>
+              </Form>
             )}
           </>
         )}
         {tab === 'security' && (
-          <form
+          <Form
             className="maintenance-form"
             onSubmit={(e) => {
               e.preventDefault();
@@ -430,7 +431,7 @@ export function DataManager({
               <KeyRound size={14} />
               {busy ? '正在重新加密…' : '更换主密码'}
             </button>
-          </form>
+          </Form>
         )}
       </div>
     </Modal>

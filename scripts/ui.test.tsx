@@ -11,6 +11,7 @@ import { IngestModal } from '../src/components/IngestModal';
 import { RepoView } from '../src/components/views/RepoView';
 import { VersionHistory } from '../src/components/VersionHistory';
 import { Attachments } from '../src/components/Attachments';
+import { ConfirmationProvider } from '../src/components/ConfirmationProvider';
 import { Markdown, archivedMediaPath } from '../src/components/Markdown';
 import { emptyEndpoint } from '../src/lib/request';
 import type { Item } from '../src/types';
@@ -23,6 +24,19 @@ const mocks = vi.hoisted(() => ({
   exportText: vi.fn(),
   request: vi.fn(),
   desktopAction: vi.fn(),
+  desktop: false,
+  initializeServer: vi.fn(),
+  closeRequested: vi.fn(),
+  destroy: vi.fn(),
+}));
+vi.mock('../src/lib/platform', async (original) => ({
+  ...(await original<typeof import('../src/lib/platform')>()),
+  get isDesktop() {
+    return mocks.desktop;
+  },
+}));
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => ({ onCloseRequested: mocks.closeRequested, destroy: mocks.destroy }),
 }));
 vi.mock('../src/lib/api', () => ({
   ...mocks,
@@ -93,7 +107,16 @@ async function click(name: string) {
   await act(async () => button(name).click());
 }
 async function render(ui: ReactNode) {
-  await act(async () => root.render(ui));
+  await act(async () => root.render(<ConfirmationProvider>{ui}</ConfirmationProvider>));
+}
+async function answer(name: string) {
+  const dialog = host.querySelector('[role="alertdialog"]');
+  expect(dialog).not.toBeNull();
+  const button = [...dialog!.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === name,
+  );
+  expect(button).toBeDefined();
+  await act(async () => button!.click());
 }
 async function submit() {
   await act(async () =>
@@ -116,6 +139,14 @@ function deferred<T>() {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks();
+  mocks.desktop = false;
+  mocks.initializeServer.mockResolvedValue({
+    serverUrl: 'https://example.com/api',
+    configPath: 'C:/config.json',
+    error: null,
+  });
+  mocks.closeRequested.mockResolvedValue(() => {});
+  mocks.destroy.mockResolvedValue(undefined);
   mocks.saveItem.mockReset();
   mocks.api.mockImplementation(async (path: string) => {
     if (path === '/health') return { initialized: true, database: 'PostgreSQL', version: '0.1.0' };
@@ -149,6 +180,7 @@ beforeEach(() => {
   root = createRoot(host);
 });
 afterEach(async () => {
+  expect(window.confirm).not.toHaveBeenCalled();
   await act(async () => root.unmount());
   host.remove();
   vi.restoreAllMocks();
@@ -399,13 +431,16 @@ test('new-item cancel and ingest cancel keep entered content when discard is dec
   );
   await fill(input('文章标题'), 'draft');
   await click('取消');
+  await answer('继续编辑');
+  expect(input('文章标题').value).toBe('draft');
   expect(close).not.toHaveBeenCalled();
   await render(
     <IngestModal initialUrl="https://example.com" onDraft={vi.fn()} onClose={close} onQueued={vi.fn()} />,
   );
   await click('取消');
+  await answer('继续编辑');
   expect(close).not.toHaveBeenCalled();
-  expect(window.confirm).toHaveBeenCalledTimes(2);
+  expect(input('目标 URL').value).toBe('https://example.com');
 });
 
 test('initialization rejects mismatched confirmation before sending the master password', async () => {
@@ -625,7 +660,8 @@ test('15 minutes of inactivity asks before dropping a credential draft', async (
   await fill(host.querySelector<HTMLSelectElement>('dialog select')!, 'credential');
   await fill(input('资产名称'), 'private draft');
   await act(async () => vi.advanceTimersByTime(15 * 60 * 1000));
-  expect(window.confirm).toHaveBeenCalled();
+  expect(host.querySelector('[role="alertdialog"]')?.textContent).toContain('锁定密码库');
+  await answer('继续编辑');
   expect(host.querySelector('dialog')).not.toBeNull();
   expect(input('资产名称').value).toBe('private draft');
   expect(mocks.api).not.toHaveBeenCalledWith('/vault/lock', { method: 'POST' });
@@ -650,8 +686,9 @@ test('attachment controls upload multipart data, download the stored name and co
   expect(mocks.downloadBlob.mock.lastCall![1]).toBe(file.name);
   await click('删除 ' + file.name);
   expect(mocks.api).toHaveBeenCalledTimes(2);
-  vi.mocked(window.confirm).mockReturnValue(true);
+  await answer('取消');
   await click('删除 ' + file.name);
+  await answer('删除附件');
   expect(mocks.api).toHaveBeenLastCalledWith('/attachments/file-id', { method: 'DELETE' });
   expect(host.querySelector('.file-row')).toBeNull();
 });
@@ -837,7 +874,10 @@ test('session expiry with a dirty article draft does not drop the text without c
   await click('Markdown');
   await fill(input('Markdown 正文'), 'keep this draft');
   await act(async () => window.dispatchEvent(new Event('infohub:unauthorized')));
-  expect(window.confirm).toHaveBeenCalled();
+  await act(async () => window.dispatchEvent(new Event('infohub:unauthorized')));
+  expect(host.querySelectorAll('[role="alertdialog"]')).toHaveLength(1);
+  expect(host.querySelector('[role="alertdialog"]')?.textContent).toContain('登录已过期');
+  await answer('保留当前编辑');
   expect(input('Markdown 正文').value).toBe('keep this draft');
   expect(host.querySelector('h2')?.textContent).not.toBe('回到你的工作台');
 });
@@ -858,6 +898,39 @@ test('a failed vault lock keeps the current session', async () => {
   expect(host.querySelector('[aria-label="金库已解锁"]')).not.toBeNull();
   expect(host.querySelector('[aria-label="收录抓取"]')).not.toBeNull();
   expect(host.textContent).not.toContain('回到你的工作台');
+});
+
+test('desktop close waits for the styled confirmation, keeps cancelled drafts and ignores duplicate close events', async () => {
+  mocks.desktop = true;
+  await render(<App />);
+  await fill(input('主密码'), 'test-password');
+  await submit();
+  await click('知识与文章1');
+  await click('新建资产');
+  await fill(input('文章标题'), '窗口关闭前保留');
+  const close = mocks.closeRequested.mock.lastCall![0];
+  const event = { preventDefault: vi.fn() };
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = close(event);
+  });
+  expect(event.preventDefault).toHaveBeenCalledOnce();
+  expect(mocks.destroy).not.toHaveBeenCalled();
+  expect(unload()).toBe(false);
+  await answer('继续编辑');
+  await pending;
+  expect(input('文章标题').value).toBe('窗口关闭前保留');
+  expect(mocks.destroy).not.toHaveBeenCalled();
+  await act(async () => {
+    pending = close(event);
+  });
+  const repeated = { preventDefault: vi.fn() };
+  await act(async () => close(repeated));
+  expect(repeated.preventDefault).toHaveBeenCalledOnce();
+  expect(host.querySelectorAll('[role="alertdialog"]')).toHaveLength(1);
+  await answer('放弃修改并关闭');
+  await pending;
+  expect(mocks.destroy).toHaveBeenCalledOnce();
 });
 
 test('a failed list reload does not keep the previous filter rows', async () => {
@@ -979,7 +1052,6 @@ test('archived media URLs must be a media UUID and cannot traverse to other APIs
 });
 
 test('a failed refresh uses an error toast instead of the success style', async () => {
-  vi.mocked(window.confirm).mockReturnValue(true);
   await render(<App />);
   await fill(input('主密码'), 'test-password');
   await submit();
@@ -991,6 +1063,7 @@ test('a failed refresh uses an error toast instead of the success style', async 
     return fallback(path, options);
   });
   await click('重新同步');
+  await answer('继续同步');
   const toast = host.querySelector('.toast');
   expect(toast?.textContent).toContain('同步失败');
   expect(toast?.getAttribute('role')).toBe('alert');
@@ -1091,8 +1164,9 @@ test('history preview restores only with the current revision and explicit confi
   expect(host.textContent).toContain('历史正文');
   await click('恢复到此版本');
   expect(restored).not.toHaveBeenCalled();
-  vi.mocked(window.confirm).mockReturnValue(true);
+  await answer('取消');
   await click('恢复到此版本');
+  await answer('恢复版本');
   expect(mocks.api).toHaveBeenLastCalledWith('/items/knowledge/versions/version-a/restore', {
     method: 'POST',
     body: JSON.stringify({ revision: 2 }),
@@ -1109,7 +1183,8 @@ test('declining article sync does not contact the source', async () => {
   await act(async () => host.querySelector<HTMLButtonElement>('.list-item')!.click());
   await click('重新同步');
   expect(mocks.api.mock.calls.some(([path]) => path.endsWith('/refresh'))).toBe(false);
-  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('版本历史'));
+  expect(host.querySelector('[role="alertdialog"]')?.textContent).toContain('版本历史');
+  await answer('取消');
 });
 
 test('switching asset kind does not keep the previous filter rows', async () => {

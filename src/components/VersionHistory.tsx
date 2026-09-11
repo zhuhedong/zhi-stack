@@ -4,6 +4,7 @@ import { api, errorMessage } from '../lib/api';
 import type { Item } from '../types';
 import { Modal } from './Modal';
 import { Markdown } from './Markdown';
+import { useConfirm } from '../lib/confirmation';
 
 interface Version {
   id: string;
@@ -21,6 +22,7 @@ export function VersionHistory({
   onClose: () => void;
   onRestored: (item: Item) => void;
 }) {
+  const confirm = useConfirm(item.id);
   const [versions, setVersions] = useState<Version[]>([]);
   const [preview, setPreview] = useState<Item | null>(null);
   const [selected, setSelected] = useState('');
@@ -54,7 +56,15 @@ export function VersionHistory({
     }
   }
   async function restore() {
-    if (!selected || !window.confirm('恢复此版本？当前版本会保留在历史中。')) return;
+    if (
+      !selected ||
+      !(await confirm({
+        title: '恢复历史版本',
+        description: '将当前资料恢复到所选版本？当前版本会保留在版本历史中。',
+        confirmLabel: '恢复版本',
+      }))
+    )
+      return;
     setBusy(true);
     setError('');
     try {

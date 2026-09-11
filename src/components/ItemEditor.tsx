@@ -1,3 +1,4 @@
+import { Form } from './Form';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle, Plus, Trash2 } from 'lucide-react';
 import { usePersistentDraft } from '../lib/usePersistentDraft';
@@ -6,6 +7,7 @@ import { Modal } from './Modal';
 import { categories, pillarNames, type Item, type ItemInput, type Pillar } from '../types';
 import { errorMessage, saveItem } from '../lib/api';
 import { fieldNames, secretField } from '../lib/fields';
+import { useConfirm } from '../lib/confirmation';
 
 const presets: Record<string, { label: string; category: string; fields: Record<string, string> }> = {
   rest_api: { label: 'REST API / Swagger', category: 'http', fields: { baseUrl: '', swaggerUrl: '' } },
@@ -67,6 +69,7 @@ export function ItemEditor({
   onClose: () => void;
   onSaved: (item: Item) => void;
 }) {
+  const confirm = useConfirm();
   const [form, setForm] = useState<ItemInput>(() =>
     item
       ? structuredClone(item)
@@ -133,8 +136,19 @@ export function ItemEditor({
     setDirty(true);
   };
   const data = (patch: Partial<ItemInput['data']>) => change({ data: { ...form.data, ...patch } });
-  const close = () => {
-    if (!busy && (!dirty || window.confirm('尚有未保存的内容，放弃这些修改？'))) onClose();
+  const close = async () => {
+    if (
+      !busy &&
+      (!dirty ||
+        (await confirm({
+          title: '放弃修改',
+          description: '当前内容尚未保存，确认放弃这些修改？',
+          confirmLabel: '放弃修改',
+          cancelLabel: '继续编辑',
+          danger: true,
+        })))
+    )
+      onClose();
   };
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -162,7 +176,7 @@ export function ItemEditor({
   }
   return (
     <Modal title={item ? '编辑资产属性' : '新建资产条目'} onClose={close} wide>
-      <form onSubmit={submit}>
+      <Form onSubmit={submit}>
         <fieldset className="form-fields" disabled={busy}>
           <div className="modal-body">
             <DraftNotice draft={persistence} />
@@ -454,7 +468,7 @@ export function ItemEditor({
             </button>
           </div>
         </fieldset>
-      </form>
+      </Form>
     </Modal>
   );
 }

@@ -1,8 +1,10 @@
+import { Form } from './Form';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowUpRight, Folder, Plus } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { pillarNames, type Item } from '../types';
 import { Modal } from './Modal';
+import { useConfirm } from '../lib/confirmation';
 
 interface Project {
   id: string;
@@ -21,6 +23,7 @@ export function ProjectHub({
   onOpen: (item: Item) => void;
   onChanged: () => void;
 }) {
+  const confirm = useConfirm();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -53,7 +56,15 @@ export function ProjectHub({
     (name !== (selected?.name || '') ||
       description !== (selected?.description || '') ||
       archived !== (selected?.archived || false));
-  const mayLeave = () => !dirty || window.confirm('离开项目编辑？未保存的项目说明会丢失。');
+  const mayLeave = async () =>
+    !dirty ||
+    (await confirm({
+      title: '离开项目编辑',
+      description: '未保存的项目名称、说明及归档状态会丢失，确认放弃修改？',
+      confirmLabel: '放弃修改',
+      cancelLabel: '继续编辑',
+      danger: true,
+    }));
   async function select(id: string) {
     setBusy(true);
     setError('');
@@ -68,8 +79,8 @@ export function ProjectHub({
       setBusy(false);
     }
   }
-  function edit(project: Project | null) {
-    if (!mayLeave()) return;
+  async function edit(project: Project | null) {
+    if (!(await mayLeave())) return;
     setSelected(project);
     setName(project?.name || '');
     setDescription(project?.description || '');
@@ -97,8 +108,8 @@ export function ProjectHub({
   return (
     <Modal
       title="项目总览"
-      onClose={() => {
-        if (!busy && mayLeave()) onClose();
+      onClose={async () => {
+        if (!busy && (await mayLeave())) onClose();
       }}
       wide
     >
@@ -123,8 +134,8 @@ export function ProjectHub({
                 key={p.id}
                 disabled={busy}
                 className={selected?.id === p.id ? 'selected' : ''}
-                onClick={() => {
-                  if (mayLeave()) void select(p.id);
+                onClick={async () => {
+                  if (await mayLeave()) void select(p.id);
                 }}
               >
                 <Folder size={14} />
@@ -141,7 +152,7 @@ export function ProjectHub({
             </p>
           )}
           {editing ? (
-            <form className="maintenance-form" onSubmit={save}>
+            <Form className="maintenance-form" onSubmit={save}>
               <h3>{selected ? '编辑项目' : '新项目'}</h3>
               <label>
                 项目名称
@@ -169,7 +180,7 @@ export function ProjectHub({
               <button className="primary" disabled={busy}>
                 保存项目
               </button>
-            </form>
+            </Form>
           ) : selected ? (
             <>
               <div className="section-title">

@@ -1,4 +1,53 @@
 /* InfoHub data maintenance · shared Apple Light tokens */
+.modal.confirmation-modal {
+  width: min(420px, calc(100vw - 32px));
+}
+.confirmation-body {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding-block: var(--space-xl);
+}
+.confirmation-body > svg {
+  flex-shrink: 0;
+  color: var(--color-blue-text);
+}
+.confirmation-danger > svg {
+  color: var(--color-danger-ink);
+}
+.confirmation-body p {
+  margin: 0;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.confirmation-modal .modal-foot {
+  flex-wrap: wrap;
+}
+.form-validation-error {
+  margin: 0;
+}
+.modal form > .form-validation-error {
+  margin: var(--space-md) var(--space-lg);
+}
+input[aria-invalid='true'],
+textarea[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--color-danger-ink);
+}
+input[type='file']::file-selector-button {
+  font: inherit;
+  margin-right: var(--space-sm);
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  background: var(--color-raised);
+  cursor: pointer;
+}
+input[type='file']::file-selector-button:hover {
+  background: var(--color-hover);
+}
 .maintenance-tabs {
   padding-inline: var(--space-lg);
   flex-shrink: 0;

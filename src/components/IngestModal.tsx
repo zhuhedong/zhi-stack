@@ -1,3 +1,4 @@
+import { Form } from './Form';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Download, LoaderCircle } from 'lucide-react';
 import { Modal } from './Modal';
@@ -5,6 +6,7 @@ import { api, errorMessage } from '../lib/api';
 import type { Pillar } from '../types';
 import { usePersistentDraft } from '../lib/usePersistentDraft';
 import { DraftNotice } from './DraftNotice';
+import { useConfirm } from '../lib/confirmation';
 export function IngestModal({
   initialUrl,
   unlocked = true,
@@ -18,6 +20,7 @@ export function IngestModal({
   onQueued: (id: string) => void;
   onDraft: (dirty: boolean, kind?: Pillar) => void;
 }) {
+  const confirm = useConfirm();
   const [url, setUrl] = useState(initialUrl);
   const [kind, setKind] = useState('');
   const [project, setProject] = useState('');
@@ -52,8 +55,19 @@ export function IngestModal({
       onDraft(false);
     };
   }, [onDraft]);
-  const close = () => {
-    if (!busy && (!dirty || window.confirm('收录信息尚未保存，放弃这些内容？'))) onClose();
+  const close = async () => {
+    if (
+      !busy &&
+      (!dirty ||
+        (await confirm({
+          title: '放弃收录',
+          description: '收录信息尚未提交，关闭后将离开当前编辑。',
+          confirmLabel: '放弃收录',
+          cancelLabel: '继续编辑',
+          danger: true,
+        })))
+    )
+      onClose();
   };
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -90,7 +104,7 @@ export function IngestModal({
   }
   return (
     <Modal title="收录文章、项目或 OpenAPI" onClose={close}>
-      <form onSubmit={submit}>
+      <Form onSubmit={submit}>
         <div className="modal-body">
           <DraftNotice draft={persistence} />
           <p className="muted">
@@ -174,7 +188,7 @@ export function IngestModal({
             {busy ? '正在提交…' : '开始收录'}
           </button>
         </div>
-      </form>
+      </Form>
     </Modal>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
 import { useProbe } from '../lib/useProbe';
+import { useConfirm } from '../lib/confirmation';
 import type { CompiledRequest } from '../lib/request';
 import type { ProbeResult } from '../types';
 
@@ -30,6 +31,7 @@ const statuses: Record<string, string> = {
   interrupted: '服务中断',
 };
 export function RequestHistory({ itemId }: { itemId: string }) {
+  const confirm = useConfirm(itemId);
   const [page, setPage] = useState(0);
   const [tick, setTick] = useState(0);
   const [rows, setRows] = useState<Entry[]>([]);
@@ -68,7 +70,15 @@ export function RequestHistory({ itemId }: { itemId: string }) {
     }
   }
   async function remove(id: string) {
-    if (!window.confirm('删除这条请求及响应历史？')) return;
+    if (
+      !(await confirm({
+        title: '删除请求历史',
+        description: '删除这条请求及对应的响应历史？删除后无法恢复。',
+        confirmLabel: '删除历史',
+        danger: true,
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await api(`/items/${itemId}/requests/${id}`, { method: 'DELETE' });

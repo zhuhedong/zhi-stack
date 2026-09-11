@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react';
 import type { ItemData } from '../types';
 import { PairEditor } from './PairEditor';
+import { useConfirm } from '../lib/confirmation';
 
 export function ApiEnvironments({
   data,
@@ -9,6 +10,7 @@ export function ApiEnvironments({
   data: ItemData;
   onChange: (patch: Partial<ItemData>) => void;
 }) {
+  const confirm = useConfirm();
   const environments = data.environments || [];
   const current = environments.find((env) => env.id === data.activeEnvironment);
   return (
@@ -51,8 +53,15 @@ export function ApiEnvironments({
             </label>
             <button
               className="danger-text"
-              onClick={() => {
-                if (window.confirm(`删除环境「${current.name}」？保存参数后生效。`))
+              onClick={async () => {
+                if (
+                  await confirm({
+                    title: '删除请求环境',
+                    description: `删除环境「${current.name}」及其变量？保存参数后生效。`,
+                    confirmLabel: '删除环境',
+                    danger: true,
+                  })
+                )
                   onChange({
                     environments: environments.filter((env) => env.id !== current.id),
                     activeEnvironment: '',

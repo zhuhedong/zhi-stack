@@ -1,6 +1,6 @@
 # 项目完整功能清单
 
-整理日期：2026-09-11，版本 0.2.1。依据当前 React 界面、Rust 路由、PostgreSQL 迁移、Tauri 入口及有效设计资料。本轮新增能力与实际验收见 [0.2.1 说明](release-0.2.1.md)，旧日期报告保留为历史记录。
+整理日期：2026-09-11，版本 0.2.2。依据当前 React 界面、Rust 路由、PostgreSQL 迁移、Tauri 入口及有效设计资料。本轮新增能力与实际验收见 [0.2.2 说明](release-0.2.2.md)，旧日期报告保留为历史记录。
 
 InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、GitHub 项目、服务器与凭证三类；以下将各工作区和公共能力分别展开。“已实现”表示当前代码有对应实现，实际验证范围以 [验收记录](verification.md)、[逐项核查](functional-audit.md) 和 [业务复查](business-review.md) 为准。
 
@@ -291,6 +291,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - Dockerfile、应用与 PG 的 Compose 配置、数据库健康检查、命名数据卷和重启策略。
 - 已有远程 PG 时可用独立 [compose.external-pg.yaml](../compose.external-pg.yaml) 只部署应用；支持分项 PG 连接、SSL 模式及可选 CA 证书挂载，步骤见 [使用已有 PG 部署](deploy-external-pg.md)。此模式未做容器实跑验收。
 - 桌面首次启动直接填写服务端地址，支持测试连接；保存到用户配置目录的 `config.json` 后才连接，下次启动自动读取。无默认服务器，旧缓存只用于预填。更换服务器清除原会话和密码，无需重新打包。
+- 业务确认使用统一弹窗，危险操作明确标识，默认聚焦取消；Esc 只取消最上层确认，关闭后恢复焦点。表单校验显示页面内错误并聚焦对应字段；桌面关闭窗口等待自定义确认，浏览器刷新/关闭的离开提醒由浏览器控制。
 - Tauri 开发与构建流程；桌面 CSP 支持配置的 HTTP/HTTPS 服务，服务端 CORS 保留桌面来源。
 
 服务端设置通过环境变量和配置文件完成；桌面服务地址在登录页直接填写并写入本机配置文件，错误内容可重新填写修复，写入失败保留原配置。日志不是可检索的运维平台。Docker 已在 0.2.0 修复后的 CI 中完成冒烟检查；本版与远程 HTTPS 的验证范围见发布说明。依据：[main.rs](../server/src/main.rs)、[ServerSettings.tsx](../src/components/ServerSettings.tsx)、[config.rs](../src-tauri/src/config.rs)、[compose.yaml](../compose.yaml)、[运行说明](../README.md)。
@@ -304,7 +305,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - SVG 主稿、小尺寸稿、单色稿，PNG、ICO、ICNS、Apple Touch 与 Windows Store 资源。
 - 图标重新生成、实际尺寸预览、Windows EXE 七档图标资源校验；只修改图标也会触发资源重编译。
 
-Windows 发布流程生成 release EXE、NSIS 安装器、独立服务端、前端、运维文档与 SHA-256 清单，要求当前源码的完整验收报告通过。实际产物及安装验证状态见 [本版说明](release-0.2.1.md)。桌面端仍需独立服务与 PG，未提供托盘、自动更新或后端一键托管；macOS 图标资源不表示 macOS 已验收。
+Windows 发布流程生成 release EXE、NSIS 安装器、独立服务端、前端、运维文档与 SHA-256 清单，要求当前源码的完整验收报告通过。实际产物及安装验证状态见 [本版说明](release-0.2.2.md)。桌面端仍需独立服务与 PG，未提供托盘、自动更新或后端一键托管；macOS 图标资源不表示 macOS 已验收。
 
 ## 25. 测试、验收与开发辅助
 
@@ -315,7 +316,7 @@ Windows 发布流程生成 release EXE、NSIS 安装器、独立服务端、前�
 - 可选公开 GitHub 网络验收及保持隔离验收页面的运行模式。
 - 历史验收通过 21 组 PG 集成、37 项单元/组件检查；图标有独立构建与资源检查流程。
 
-当前执行 `npm run verify:release`，报告记录源码摘要、构建、单元/组件及各业务集成检查。有 Docker 时追加 `-- --docker` 验证非 root 容器、重启、备份与恢复。R2 协议检查使用本地签名校验服务，不等同真实 Cloudflare 部署。当前数量及待验范围见 [本版说明](release-0.2.1.md)；旧日期结果保留在 [验收记录](verification.md)。
+当前执行 `npm run verify:release`，报告记录源码摘要、构建、单元/组件及各业务集成检查。有 Docker 时追加 `-- --docker` 验证非 root 容器、重启、备份与恢复。R2 协议检查使用本地签名校验服务，不等同真实 Cloudflare 部署。当前数量及待验范围见 [本版说明](release-0.2.2.md)；旧日期结果保留在 [验收记录](verification.md)。
 
 ## 26. 引导、使用统计与反馈
 

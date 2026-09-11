@@ -1,8 +1,10 @@
+import { Form } from './Form';
 import { useEffect, useState } from 'react';
 import { api, errorMessage, exportText } from '../lib/api';
 import { usePersistentDraft } from '../lib/usePersistentDraft';
 import { DraftNotice } from './DraftNotice';
 import { Modal } from './Modal';
+import { useConfirm } from '../lib/confirmation';
 interface Usage {
   preferences: { usage_enabled: boolean; usage_since: string };
   totals: { event: string; count: number }[];
@@ -31,6 +33,7 @@ export function InsightsPanel({
   onShowGuide: () => void;
   onDraft: (dirty: boolean, kind?: 'credential') => void;
 }) {
+  const confirm = useConfirm();
   const [usage, setUsage] = useState<Usage | null>(null);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [tick, setTick] = useState(0);
@@ -92,8 +95,18 @@ export function InsightsPanel({
   return (
     <Modal
       title="使用与反馈"
-      onClose={() => {
-        if (!busy && (!message || window.confirm('反馈尚未提交，关闭编辑？恢复草稿会保留。'))) onClose();
+      onClose={async () => {
+        if (
+          !busy &&
+          (!message ||
+            (await confirm({
+              title: '关闭反馈编辑',
+              description: '反馈尚未提交，确认关闭编辑？已保存的恢复草稿会保留。',
+              confirmLabel: '关闭编辑',
+              cancelLabel: '继续编辑',
+            })))
+        )
+          onClose();
       }}
       wide
     >
@@ -169,8 +182,15 @@ export function InsightsPanel({
               </button>
               <button
                 disabled={busy}
-                onClick={() => {
-                  if (window.confirm('清空全部使用统计？这不会删除资料或阅读记录。'))
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: '清空使用统计',
+                      description: '清空全部使用统计？资料和阅读记录会保留，已清空的统计无法恢复。',
+                      confirmLabel: '清空统计',
+                      danger: true,
+                    })
+                  )
                     void action(() =>
                       api('/usage', { method: 'DELETE', body: JSON.stringify({ confirm: '清空统计' }) }),
                     );
@@ -197,7 +217,7 @@ export function InsightsPanel({
             {unlocked ? (
               <>
                 <DraftNotice draft={persistence} />
-                <form
+                <Form
                   className="maintenance-form"
                   onSubmit={(event) => {
                     event.preventDefault();
@@ -253,7 +273,7 @@ export function InsightsPanel({
                   <button className="primary" disabled={busy || !message.trim()}>
                     保存反馈
                   </button>
-                </form>
+                </Form>
                 <button
                   disabled={!feedback.length}
                   onClick={() => exportText(JSON.stringify(feedback, null, 2), 'infohub-feedback.json')}
@@ -285,8 +305,15 @@ export function InsightsPanel({
                       </button>
                       <button
                         disabled={busy}
-                        onClick={() => {
-                          if (window.confirm('删除这条反馈？'))
+                        onClick={async () => {
+                          if (
+                            await confirm({
+                              title: '删除反馈',
+                              description: '删除这条反馈记录？删除后无法恢复。',
+                              confirmLabel: '删除反馈',
+                              danger: true,
+                            })
+                          )
                             void action(() => api(`/feedback/${entry.id}`, { method: 'DELETE' }));
                         }}
                       >

@@ -1,3 +1,4 @@
+import { Form } from './Form';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import { API_BASE, configureServer, errorMessage } from '../lib/api';
@@ -96,7 +97,7 @@ export function ServerSettings({
           <DeploymentSteps />
         </div>
       ) : (
-        <form onSubmit={save}>
+        <Form onSubmit={save}>
           <div className="modal-body">
             <label>
               服务端地址
@@ -142,7 +143,7 @@ export function ServerSettings({
               {busy === 'save' ? '正在保存…' : '保存并连接'}
             </button>
           </div>
-        </form>
+        </Form>
       )}
     </div>
   );
