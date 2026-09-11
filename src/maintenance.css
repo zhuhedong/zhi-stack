@@ -384,3 +384,30 @@
     gap: var(--space-sm);
   }
 }
+.auth-form .server-settings-inline form {
+  margin-top: 0;
+  gap: 0;
+}
+.server-settings-inline .modal-body {
+  padding: 18px 0 8px;
+}
+.server-settings-inline .modal-foot {
+  padding: 16px 0 0;
+  border-top: 0;
+  flex-wrap: wrap;
+  background: transparent;
+}
+.server-settings-inline .maintenance-tabs {
+  margin-top: 20px;
+}
+.server-config-location {
+  margin-top: 12px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.server-config-location code {
+  display: block;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}

@@ -1,14 +1,23 @@
 import type { Item, ItemInput } from '../types';
 import { vscodeFileUrl } from './request';
-import { saveServerUrl, serverUrl } from './server';
+import { DEFAULT_API_BASE, loadServerConfig, saveServerUrl } from './server';
 
 let token = '';
-export let API_BASE = serverUrl();
+export let API_BASE = DEFAULT_API_BASE;
 let connectionRevision = 0;
-export function configureServer(value: string) {
-  API_BASE = saveServerUrl(value);
+export async function initializeServer() {
+  const revision = connectionRevision;
+  const config = await loadServerConfig();
+  ensureCurrent(revision);
+  API_BASE = config.serverUrl || '';
+  return config;
+}
+export async function configureServer(value: string) {
+  const config = await saveServerUrl(value);
+  API_BASE = config.serverUrl || '';
   token = '';
   connectionRevision++;
+  return config;
 }
 function ensureCurrent(revision: number) {
   if (revision !== connectionRevision) throw new DOMException('服务连接或登录会话已更换', 'AbortError');
@@ -25,6 +34,7 @@ export function setToken(value: string) {
   token = value;
 }
 export async function request(path: string, options: RequestInit = {}): Promise<Response> {
+  if (!API_BASE) throw new ApiError('请先填写并保存服务端地址。', 0);
   const revision = connectionRevision;
   const headers = new Headers(options.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);

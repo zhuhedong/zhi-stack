@@ -1,15 +1,29 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import { API_BASE, configureServer, errorMessage } from '../lib/api';
-import { checkServerConnection, DEFAULT_API_BASE } from '../lib/server';
+import { checkServerConnection, type ClientConfig } from '../lib/server';
 import { Modal } from './Modal';
 import { DeploymentSteps } from './DeploymentSteps';
 
-export function ServerSettings({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [address, setAddress] = useState(API_BASE);
+export function ServerSettings({
+  onClose,
+  onSaved,
+  initialAddress = API_BASE,
+  configPath = '',
+  initialError = '',
+  inline = false,
+}: {
+  onClose?: () => void;
+  onSaved: (config: ClientConfig) => void;
+  initialAddress?: string;
+  configPath?: string;
+  initialError?: string;
+  inline?: boolean;
+}) {
+  const [address, setAddress] = useState(initialAddress);
   const [tab, setTab] = useState('connect');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [busy, setBusy] = useState<'test' | 'save' | null>(null);
+  const [error, setError] = useState(initialError);
   const [message, setMessage] = useState('');
   const pending = useRef<AbortController | null>(null);
   useEffect(() => () => pending.current?.abort(), []);
@@ -22,7 +36,7 @@ export function ServerSettings({ onClose, onSaved }: { onClose: () => void; onSa
     const controller = new AbortController();
     pending.current?.abort();
     pending.current = controller;
-    setBusy(true);
+    setBusy('test');
     setError('');
     setMessage('');
     try {
@@ -37,25 +51,43 @@ export function ServerSettings({ onClose, onSaved }: { onClose: () => void; onSa
             : errorMessage(error),
         );
     } finally {
-      if (!controller.signal.aborted) setBusy(false);
+      if (!controller.signal.aborted) setBusy(null);
     }
   }
-  function save(event: FormEvent) {
+  async function save(event: FormEvent) {
     event.preventDefault();
+    const controller = new AbortController();
+    pending.current?.abort();
+    pending.current = controller;
+    setBusy('save');
+    setError('');
+    setMessage('');
     try {
-      configureServer(address);
-      onSaved();
+      const config = await configureServer(address);
+      if (!controller.signal.aborted) onSaved(config);
     } catch (error) {
-      setError(errorMessage(error));
+      if (!controller.signal.aborted) setError(errorMessage(error));
+    } finally {
+      if (!controller.signal.aborted) setBusy(null);
     }
   }
-  return (
-    <Modal title="服务连接" onClose={onClose}>
+  const content = (
+    <div className={inline ? 'server-settings-inline' : undefined}>
       <div className="tabs maintenance-tabs">
-        <button type="button" className={tab === 'connect' ? 'active' : ''} onClick={() => setTab('connect')}>
+        <button
+          type="button"
+          disabled={!!busy}
+          className={tab === 'connect' ? 'active' : ''}
+          onClick={() => setTab('connect')}
+        >
           连接已有服务
         </button>
-        <button type="button" className={tab === 'deploy' ? 'active' : ''} onClick={() => setTab('deploy')}>
+        <button
+          type="button"
+          disabled={!!busy}
+          className={tab === 'deploy' ? 'active' : ''}
+          onClick={() => setTab('deploy')}
+        >
           自行部署
         </button>
       </div>
@@ -74,22 +106,20 @@ export function ServerSettings({ onClose, onSaved }: { onClose: () => void; onSa
                 type="url"
                 required
                 value={address}
-                disabled={busy}
+                disabled={!!busy}
                 placeholder="https://infohub.example.com"
                 onChange={(event) => change(event.target.value)}
               />
             </label>
             <p className="form-hint">
-              填写 InfoHub 服务地址，可省略末尾的 /api。地址保存在本机，下次打开自动使用。
+              填写 InfoHub 服务地址，可省略末尾的 /api。保存到本机配置文件后，下次启动自动连接。
             </p>
-            <button
-              type="button"
-              className="text-button"
-              disabled={busy}
-              onClick={() => change(DEFAULT_API_BASE)}
-            >
-              恢复默认地址
-            </button>
+            {configPath && (
+              <details className="server-config-location">
+                <summary>配置文件位置</summary>
+                <code>{configPath}</code>
+              </details>
+            )}
             {error && (
               <div className="error" role="alert">
                 {error}
@@ -98,19 +128,34 @@ export function ServerSettings({ onClose, onSaved }: { onClose: () => void; onSa
             {message && <p role="status">{message}</p>}
           </div>
           <div className="modal-foot">
-            <button type="button" onClick={onClose}>
-              取消
+            {onClose && (
+              <button type="button" disabled={!!busy} onClick={onClose}>
+                取消
+              </button>
+            )}
+            <button type="button" disabled={!!busy} onClick={() => void testConnection()}>
+              {busy === 'test' && <LoaderCircle className="spin" size={14} />}
+              {busy === 'test' ? '正在测试…' : '测试连接'}
             </button>
-            <button type="button" disabled={busy} onClick={() => void testConnection()}>
-              {busy && <LoaderCircle className="spin" size={14} />}
-              {busy ? '正在测试…' : '测试连接'}
-            </button>
-            <button className="primary" disabled={busy}>
-              保存并连接
+            <button className="primary" disabled={!!busy}>
+              {busy === 'save' && <LoaderCircle className="spin" size={14} />}
+              {busy === 'save' ? '正在保存…' : '保存并连接'}
             </button>
           </div>
         </form>
       )}
+    </div>
+  );
+  return inline ? (
+    content
+  ) : (
+    <Modal
+      title="服务连接"
+      onClose={() => {
+        if (!busy) onClose?.();
+      }}
+    >
+      {content}
     </Modal>
   );
 }

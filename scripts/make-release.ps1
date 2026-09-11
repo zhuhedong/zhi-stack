@@ -5,6 +5,8 @@ Push-Location $projectRoot
 try {
     $verification = Get-Content -Raw -LiteralPath $Report | ConvertFrom-Json
     $package = Get-Content -Raw -LiteralPath 'package.json' | ConvertFrom-Json
+    $releaseNotes = 'docs/release-' + $package.version + '.md'
+    if (-not (Test-Path -LiteralPath $releaseNotes -PathType Leaf)) { throw "Missing release notes: $releaseNotes" }
     $fingerprint = & node scripts/source-fingerprint.mjs
     if ($LASTEXITCODE -ne 0 -or $verification.status -ne 'passed' -or $verification.version -ne $package.version -or $verification.sourceFingerprint -ne $fingerprint) { throw 'Run npm run verify:release on the final source before packaging.' }
     & cargo build --manifest-path server/Cargo.toml --release --locked --target-dir .local/product-build
@@ -29,7 +31,7 @@ try {
     Copy-Item -LiteralPath 'src-tauri/target/release/app.exe' -Destination (Join-Path $destination 'infohub.exe')
     $installer = Join-Path 'src-tauri/target/release/bundle/nsis' ('infohub_' + $package.version + '_x64-setup.exe')
     Copy-Item -LiteralPath $installer -Destination $destination
-    Copy-Item -LiteralPath 'docs/operations.md', 'docs/trial-protocol.md', 'docs/release-0.2.0.md' -Destination $destination
+    Copy-Item -LiteralPath 'docs/operations.md', 'docs/trial-protocol.md', $releaseNotes -Destination $destination
     Copy-Item -LiteralPath $Report -Destination (Join-Path $destination 'verification.json')
     $scriptFolder = Join-Path $destination 'scripts'
     New-Item -ItemType Directory -Path $scriptFolder | Out-Null

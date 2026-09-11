@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.2.0"
+version = "0.2.1"
 description = "InfoHub personal developer workspace"
 authors = ["you"]
 license = ""
@@ -25,3 +25,4 @@ tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 opener = "0.8"
 url = "2"
+tempfile = "3"
