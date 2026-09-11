@@ -20,7 +20,7 @@ export function RepoView({
 }) {
   const [path, setPath] = useState(item.data.localWorkspacePath || '');
   const [notes, setNotes] = useState(item.data.cookbookNotes || '');
-  const [tab, setTab] = useState('release');
+  const [tab, setTab] = useState('readme');
   const [preview, setPreview] = useState(false);
   const draft = useDraft(onDirty);
   const { dirty } = draft;
@@ -126,11 +126,11 @@ export function RepoView({
         </div>
       </section>
       <div className="tabs">
-        <button className={tab === 'release' ? 'active' : ''} onClick={() => setTab('release')}>
-          版本更新
-        </button>
         <button className={tab === 'readme' ? 'active' : ''} onClick={() => setTab('readme')}>
           README
+        </button>
+        <button className={tab === 'release' ? 'active' : ''} onClick={() => setTab('release')}>
+          版本更新
         </button>
         <button className={tab === 'notes' ? 'active' : ''} onClick={() => setTab('notes')}>
           实践笔记

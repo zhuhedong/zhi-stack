@@ -452,6 +452,18 @@ test('custom credential fields and tags are saved, and editing an existing item 
   expect(host.querySelector('select')?.disabled).toBe(true);
 });
 
+test('repository canvas opens on README rather than release notes', async () => {
+  const value = {
+    ...item(),
+    kind: 'repo' as const,
+    data: { readme: '# Hello repo', latestRelease: 'v9', releaseNotes: 'breaking changelog' },
+  };
+  await render(<RepoView item={value} onSaved={vi.fn()} onDirty={vi.fn()} notify={vi.fn()} />);
+  expect(button('README').className).toContain('active');
+  expect(host.querySelector('.markdown h1')?.textContent).toBe('Hello repo');
+  expect(host.textContent).not.toContain('breaking changelog');
+});
+
 test('repository notes preview and workspace path save together', async () => {
   const value = {
     ...item(),
