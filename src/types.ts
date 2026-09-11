@@ -18,6 +18,8 @@ export interface Endpoint {
   requestBody: string;
 }
 export interface ItemData {
+  environments?: { id: string; name: string; variables: Pair[] }[];
+  activeEnvironment?: string;
   content?: string;
   author?: string;
   sourceName?: string;
@@ -59,6 +61,15 @@ export interface ItemInput {
   revision?: number;
 }
 export interface Item extends ItemInput {
+  matchSnippet?: string;
+  matchScore?: number;
+  state?: {
+    archived?: boolean;
+    later?: boolean;
+    progress?: number;
+    visit_count?: number;
+    last_opened_at?: string;
+  };
   id: string;
   createdAt: string;
   updatedAt: string;
@@ -83,6 +94,7 @@ export interface Attachment {
   size: number;
 }
 export interface ProbeResult {
+  truncated?: boolean;
   status: number;
   headers: Record<string, string>;
   body: string;

@@ -53,7 +53,11 @@ export async function request(path: string, options: RequestInit = {}): Promise<
     } catch {
       if (response.status === 413) message = '上传内容过大，附件最多 10 MB';
     }
-    if (response.status === 401 && !path.startsWith('/auth/') && path !== '/vault/unlock')
+    if (
+      response.status === 401 &&
+      !path.startsWith('/auth/') &&
+      !['/vault/unlock', '/vault/password', '/backup/export', '/backup/restore'].includes(path)
+    )
       window.dispatchEvent(new Event('infohub:unauthorized'));
     if (response.status === 423) window.dispatchEvent(new Event('infohub:locked'));
     throw new ApiError(message, response.status);

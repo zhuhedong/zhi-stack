@@ -87,7 +87,11 @@ mod tests {
 
     #[test]
     fn other_unique_constraints_do_not_use_the_duplicate_link_wording() {
-        for constraint in [None, Some("file_objects_pkey"), Some("media_item_id_source_url_key")] {
+        for constraint in [
+            None,
+            Some("file_objects_pkey"),
+            Some("media_item_id_source_url_key"),
+        ] {
             let message = unique_violation(constraint).1;
             assert_ne!(message, "该链接已经收录，请刷新已有条目");
             assert!(message.contains("冲突"));

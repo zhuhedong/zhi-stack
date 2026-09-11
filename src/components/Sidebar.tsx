@@ -11,6 +11,11 @@ export function Sidebar({
   onDimension,
   onFavorite,
   onClose,
+  onProjects,
+  onOrganize,
+  onTasks,
+  onInsights,
+  taskCount,
 }: {
   pillar: Pillar;
   dimensions: Dimension[];
@@ -21,6 +26,11 @@ export function Sidebar({
   onDimension: (d: string) => void;
   onFavorite: () => void;
   onClose: () => void;
+  onProjects: () => void;
+  onOrganize: () => void;
+  onTasks: () => void;
+  onInsights: () => void;
+  taskCount: number;
 }) {
   const counts = (kind: Pillar) => dimensions.filter((d) => d.kind === kind).reduce((n, d) => n + d.count, 0);
   const groups = new Map<string, number>();
@@ -34,6 +44,10 @@ export function Sidebar({
       <aside className={'sidebar ' + (open ? 'is-open' : '')}>
         <div>
           <div className="nav-label">三大核心资产</div>
+          <button className="nav-item" onClick={onProjects}>
+            <Folder size={15} />
+            <span>项目总览</span>
+          </button>
           <nav aria-label="资产分类">
             {(Object.keys(pillarNames) as Pillar[]).map((p) => {
               const Icon = icons[p];
@@ -79,6 +93,19 @@ export function Sidebar({
           </div>
           <div className="dimension-tree">
             <div className="nav-label">快捷视图</div>
+            <button className="dimension-item" onClick={onTasks}>
+              <Radar size={13} />
+              <span>任务与更新</span>
+              {taskCount > 0 && <small>{taskCount}</small>}
+            </button>
+            <button className="dimension-item" onClick={onInsights}>
+              <BookOpen size={13} />
+              <span>使用与反馈</span>
+            </button>
+            <button className="dimension-item" onClick={onOrganize}>
+              <Layers size={13} />
+              <span>筛选与标签</span>
+            </button>
             <button className={'dimension-item ' + (favorite ? 'active' : '')} onClick={onFavorite}>
               <Star size={13} />
               <span>加星收藏</span>

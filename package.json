@@ -1,7 +1,7 @@
 {
   "name": "zhi-stack",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,12 @@
     "db:dev": "node scripts/dev-db.mjs",
     "test:server": "cargo test --manifest-path server/Cargo.toml",
     "test:integration": "node scripts/integration.mjs",
+    "test:lifecycle": "node scripts/lifecycle-integration.mjs",
+    "test:library": "node scripts/library-integration.mjs",
+    "test:api-workspace": "node scripts/api-workspace-integration.mjs",
+    "test:background": "node scripts/background-integration.mjs",
+    "test:insights": "node scripts/insights-integration.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
     "test:request": "node --experimental-strip-types --test scripts/request.test.ts",
     "test:ui": "vitest run scripts/ui.test.tsx",
     "test:connection": "vitest run scripts/server-connection.test.ts scripts/server-settings.test.tsx",

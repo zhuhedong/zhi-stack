@@ -3,6 +3,7 @@ import {
   Edit3,
   ExternalLink,
   Inbox,
+  History,
   LoaderCircle,
   LockKeyhole,
   RefreshCw,
@@ -14,6 +15,7 @@ import { KnowledgeView } from './views/KnowledgeView';
 import { RepoView } from './views/RepoView';
 import { CredentialView } from './views/CredentialView';
 import { SourceLink } from './SourceLink';
+import { RelatedItems } from './RelatedItems';
 export function Workspace({
   item,
   selectedKind,
@@ -25,6 +27,8 @@ export function Workspace({
   onEdit,
   onDelete,
   onRefresh,
+  onHistory,
+  onOpen,
   onStar,
   onBack,
   onUnlock,
@@ -43,6 +47,8 @@ export function Workspace({
   onEdit: () => void;
   onDelete: () => void;
   onRefresh: () => void;
+  onHistory: () => void;
+  onOpen: (item: Pick<Item, 'id' | 'kind'>) => void;
   onStar: () => void;
   onBack: () => void;
   onUnlock: () => void;
@@ -73,6 +79,15 @@ export function Workspace({
         </div>
         {item && !locked && (
           <div className="workspace-actions">
+            <button
+              className="icon-button"
+              aria-label="版本历史"
+              title="版本历史"
+              disabled={busy}
+              onClick={onHistory}
+            >
+              <History size={14} />
+            </button>
             {item.url && (
               <SourceLink
                 className="icon-button"
@@ -144,6 +159,7 @@ export function Workspace({
         </div>
       ) : (
         <div className="workspace-scroll" key={item.id + ':' + viewEpoch} inert={busy}>
+          <RelatedItems item={item} onOpen={onOpen} />
           {item.kind === 'knowledge' ? (
             <KnowledgeView item={item} onSaved={onSaved} onDirty={onDirty} />
           ) : item.kind === 'repo' ? (

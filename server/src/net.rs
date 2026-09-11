@@ -180,7 +180,7 @@ impl Network {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ProbeInput {
     pub url: String,
     pub method: String,

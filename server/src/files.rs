@@ -72,7 +72,8 @@ pub async fn initialize(db: &PgPool, storage: &FileStorage) -> Result<()> {
         let rows: Vec<(String, i64, String)> = sqlx::query_as(
             "SELECT key,size,sha256 FROM file_objects f WHERE storage_id<>$1 AND
              (EXISTS(SELECT 1 FROM attachments a WHERE a.storage_key=f.key) OR
-              EXISTS(SELECT 1 FROM media m WHERE m.storage_key=f.key))",
+              EXISTS(SELECT 1 FROM media m WHERE m.storage_key=f.key) OR
+              EXISTS(SELECT 1 FROM version_media v WHERE v.storage_key=f.key))",
         )
         .bind(&storage.id)
         .fetch_all(db)
@@ -145,6 +146,7 @@ pub async fn collect_garbage(db: &PgPool, storage: &FileStorage) -> Result<()> {
             "SELECT key FROM file_objects f WHERE storage_id=$1 AND delete_after<=now()
              AND NOT EXISTS(SELECT 1 FROM attachments a WHERE a.storage_key=f.key)
              AND NOT EXISTS(SELECT 1 FROM media m WHERE m.storage_key=f.key)
+             AND NOT EXISTS(SELECT 1 FROM version_media v WHERE v.storage_key=f.key)
              ORDER BY delete_after LIMIT 1 FOR UPDATE OF f SKIP LOCKED",
         )
         .bind(&storage.id)

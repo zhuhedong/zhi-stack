@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import type { ItemData } from '../src/types.ts';
 import {
   buildRequest,
   buildCurl,
@@ -8,6 +9,41 @@ import {
   endpointPath,
   vscodeFileUrl,
 } from '../src/lib/request.ts';
+test('environment variables resolve nested values before path/query/header/body encoding and reject unresolved or cyclic references', () => {
+  const data: ItemData = {
+    activeEnvironment: 'test',
+    fields: { baseUrl: '{{base}}' },
+    environments: [
+      {
+        id: 'test',
+        name: '测试',
+        variables: [
+          { key: 'host', value: 'https://example.com', enabled: true },
+          { key: 'base', value: '{{host}}/v1', enabled: true },
+          { key: 'value', value: '中文 / &', enabled: true },
+        ],
+      },
+    ],
+  };
+  const ep = {
+    ...emptyEndpoint(),
+    method: 'POST',
+    path: '/items/{id}',
+    pathParams: [{ key: 'id', value: '{{value}}', enabled: true }],
+    queryParams: [{ key: 'q', value: '{{value}}', enabled: true }],
+    customHeaders: [{ key: 'X-Value', value: '{{value}}', enabled: true }],
+    requestBody: '{"value":"{{value}}"}',
+  };
+  const result = buildRequest(data, ep);
+  assert.equal(decodeURIComponent(new URL(result.url).pathname), '/v1/items/中文 / &');
+  assert.equal(new URL(result.url).searchParams.get('q'), '中文 / &');
+  assert.equal(result.headers[0].value, '中文 / &');
+  assert.equal(result.body, '{"value":"中文 / &"}');
+  assert.throws(() => buildRequest({ ...data, activeEnvironment: 'deleted' }, ep), /当前环境已删除/);
+  assert.throws(() => buildRequest({ ...data, activeEnvironment: '' }, ep), /缺少变量/);
+  data.environments![0].variables[0].value = '{{base}}';
+  assert.throws(() => buildRequest(data, ep), /循环引用/);
+});
 test('path and query encoding, header precedence, and shell quoting survive hostile values', () => {
   const data = {
     fields: { baseUrl: 'https://example.com/v1' },
@@ -34,6 +70,25 @@ test('path and query encoding, header precedence, and shell quoting survive host
   assert.ok(curl.includes("'\\''"));
   assert.ok(!curl.includes('never'));
   assert.equal(buildRequest(data, { ...ep, method: 'GET' }).body, undefined);
+});
+test('endpoint overrides and environment placeholders do not require unused global variables or path fields', () => {
+  const data = {
+    fields: { baseUrl: '{{unused_global_url}}' },
+    globalHeaders: [{ key: 'Authorization', value: '{{unused_global_token}}', enabled: true }],
+  };
+  const ep = {
+    ...emptyEndpoint(),
+    baseUrl: 'https://operation.example/v2',
+    customHeaders: [{ key: 'authorization', value: 'endpoint-token', enabled: true }],
+    pathParams: [{ key: 'unused', value: '{{unused_path_value}}', enabled: true }],
+  };
+  const compiled = buildRequest(data, ep);
+  assert.equal(compiled.url, 'https://operation.example/v2/');
+  assert.equal(compiled.headers[0].value, 'endpoint-token');
+  assert.deepEqual(
+    endpointPath(ep, '/{{version}}/items/{id}').pathParams?.map((row) => row.key),
+    ['id'],
+  );
 });
 test('connection commands do not put database passwords in shell arguments', () => {
   const command = connectionCommand({
@@ -128,8 +183,5 @@ test('browser VS Code links keep a usable Windows drive colon', () => {
   assert.equal(vscodeFileUrl('D:/develop/my-project'), 'vscode://file/D:/develop/my-project');
   assert.equal(vscodeFileUrl('D:\\develop\\my-project'), 'vscode://file/D:/develop/my-project');
   assert.ok(!vscodeFileUrl('D:/develop/my-project').includes('D%3A'));
-  assert.equal(
-    vscodeFileUrl('/home/user/my project'),
-    'vscode://file//home/user/my%20project',
-  );
+  assert.equal(vscodeFileUrl('/home/user/my project'), 'vscode://file//home/user/my%20project');
 });

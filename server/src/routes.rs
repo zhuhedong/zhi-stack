@@ -10,122 +10,18 @@ use crate::{
 };
 use axum::{
     body::Body,
-    extract::{Multipart, Path, Query, State},
+    extract::{Multipart, Path, State},
     http::{header, HeaderValue, StatusCode},
     response::Response,
     Extension, Json,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
-use futures_util::TryStreamExt;
 use reqwest::Method;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
-#[derive(Deserialize, Default)]
-pub struct Filter {
-    pub kind: Option<String>,
-    pub q: Option<String>,
-    pub category: Option<String>,
-    pub project: Option<String>,
-    pub favorite: Option<bool>,
-    pub limit: Option<usize>,
-    pub offset: Option<usize>,
-}
-pub async fn list(
-    State(state): State<AppState>,
-    Extension(auth): Extension<Auth>,
-    Query(filter): Query<Filter>,
-) -> Result<Json<Value>> {
-    let query = filter
-        .q
-        .as_deref()
-        .unwrap_or_default()
-        .trim()
-        .to_lowercase();
-    if query.len() > 500 {
-        return Err(AppError::bad("搜索词过长"));
-    }
-    let limit = filter.limit.unwrap_or(100).clamp(1, 200);
-    let offset = filter.offset.unwrap_or(0).min(i64::MAX as usize);
-    let filtered = "FROM items WHERE ($1::text IS NULL OR kind=$1) AND ($2::text IS NULL OR category=$2) AND ($3::text IS NULL OR project=$3) AND ($4::boolean IS NULL OR favorite=$4)";
-    let mut items = Vec::with_capacity(limit);
-    let total;
-    if query.is_empty() {
-        // Ordinary navigation never transfers full bodies or ciphertext out of PostgreSQL.
-        total = sqlx::query_scalar::<_, i64>(&format!("SELECT count(*) {filtered}"))
-            .bind(&filter.kind)
-            .bind(&filter.category)
-            .bind(&filter.project)
-            .bind(filter.favorite)
-            .fetch_one(&state.db)
-            .await? as usize;
-        let sql = format!("SELECT id,kind,title,category,project,tags,summary,url,CASE WHEN kind='repo' THEN jsonb_build_object('stars',data->'stars') ELSE '{{}}'::jsonb END AS data,NULL::bytea AS secret,favorite,revision,created_at,updated_at {filtered} ORDER BY updated_at DESC,id LIMIT $5 OFFSET $6");
-        let rows = sqlx::query_as::<_, ItemRow>(&sql)
-            .bind(&filter.kind)
-            .bind(&filter.category)
-            .bind(&filter.project)
-            .bind(filter.favorite)
-            .bind(limit as i64)
-            .bind(offset as i64)
-            .fetch_all(&state.db)
-            .await?;
-        for row in rows {
-            items.push(row.public(None, false)?);
-        }
-    } else {
-        // Encrypted search is intentionally transient. Stream rows and retain only this page.
-        let sql = format!("SELECT * {filtered} ORDER BY updated_at DESC,id");
-        let mut rows = sqlx::query_as::<_, ItemRow>(&sql)
-            .bind(&filter.kind)
-            .bind(&filter.category)
-            .bind(&filter.project)
-            .bind(filter.favorite)
-            .fetch(&state.db);
-        let mut matches = 0;
-        while let Some(row) = rows.try_next().await? {
-            let metadata = [
-                &row.title,
-                &row.summary,
-                &row.url,
-                &row.category,
-                &row.project,
-            ]
-            .into_iter()
-            .chain(row.tags.iter())
-            .any(|s| s.to_lowercase().contains(&query));
-            let matched = if metadata {
-                true
-            } else if row.kind != "credential" {
-                search_data(&row.data, &query)
-            } else if let Some(key) = &auth.key {
-                credential_matches(key, &row.id.to_string(), row.secret.as_deref(), &query)
-            } else {
-                false
-            };
-            if !matched {
-                continue;
-            }
-            if matches >= offset && items.len() < limit {
-                let mut row = row;
-                row.data = if row.kind == "repo" {
-                    json!({"stars":row.data["stars"]})
-                } else {
-                    json!({})
-                };
-                items.push(row.public(None, false)?);
-            }
-            matches += 1;
-        }
-        total = matches;
-    }
-    let dimensions: Vec<(String,String,String,i64)> = sqlx::query_as("SELECT kind, category, project, count(*) FROM items GROUP BY kind, category, project ORDER BY category, project").fetch_all(&state.db).await?;
-    let dimensions: Vec<_> = dimensions.into_iter().map(|(kind,category,project,count)| json!({"kind":kind,"category":category,"project":project,"count":count})).collect();
-    Ok(Json(
-        json!({"items":items,"total":total,"dimensions":dimensions,"unlocked":auth.key.is_some()}),
-    ))
-}
 fn search_data(data: &Value, query: &str) -> bool {
     match data {
         Value::String(value) => value.to_lowercase().contains(query),
@@ -136,7 +32,12 @@ fn search_data(data: &Value, query: &str) -> bool {
     }
 }
 
-fn credential_matches(key: &crypto::VaultKey, id: &str, secret: Option<&[u8]>, query: &str) -> bool {
+pub(crate) fn credential_matches(
+    key: &crypto::VaultKey,
+    id: &str,
+    secret: Option<&[u8]>,
+    query: &str,
+) -> bool {
     let Ok(bytes) = crypto::decrypt(key, secret.unwrap_or_default(), id) else {
         return false;
     };
@@ -208,21 +109,36 @@ mod business_tests {
     #[test]
     fn corrupt_credential_ciphertext_does_not_fail_search() {
         let key = zeroize::Zeroizing::new([7u8; 32]);
-        assert!(!credential_matches(&key, "item-a", Some(&[1, 2, 3]), "anything"));
+        assert!(!credential_matches(
+            &key,
+            "item-a",
+            Some(&[1, 2, 3]),
+            "anything"
+        ));
         let sealed = crypto::encrypt(
             &key,
             br#"{"password":"hidden","host":"unique-host-value"}"#,
             "item-a",
         )
         .unwrap();
-        assert!(!credential_matches(&key, "item-a", Some(&sealed), "password"));
+        assert!(!credential_matches(
+            &key,
+            "item-a",
+            Some(&sealed),
+            "password"
+        ));
         assert!(credential_matches(
             &key,
             "item-a",
             Some(&sealed),
             "unique-host-value"
         ));
-        assert!(!credential_matches(&key, "item-b", Some(&sealed), "unique-host-value"));
+        assert!(!credential_matches(
+            &key,
+            "item-b",
+            Some(&sealed),
+            "unique-host-value"
+        ));
     }
 
     #[test]
@@ -251,10 +167,7 @@ mod business_tests {
         assert_eq!(inline.category, "http");
         assert_eq!(inline.data["typeKey"], "rest_api");
         assert_eq!(inline.data["swaggerEndpoints"].as_array().unwrap().len(), 1);
-        assert_eq!(
-            inline.data["fields"]["baseUrl"].as_str().unwrap_or(""),
-            ""
-        );
+        assert_eq!(inline.data["fields"]["baseUrl"].as_str().unwrap_or(""), "");
         assert!(!inline.data.to_string().contains("example.com"));
 
         let relative = r#"{"openapi":"3.0.3","info":{"title":"T"},"servers":[{"url":"/v1"}],"paths":{"/x":{"get":{}}}}"#;
@@ -266,7 +179,9 @@ mod business_tests {
         };
         parse_inline_spec(&mut relative_import).unwrap();
         assert_eq!(
-            relative_import.data["fields"]["baseUrl"].as_str().unwrap_or(""),
+            relative_import.data["fields"]["baseUrl"]
+                .as_str()
+                .unwrap_or(""),
             ""
         );
         assert!(!relative_import.data.to_string().contains("example.com"));
@@ -381,10 +296,7 @@ mod business_tests {
     #[test]
     fn kind_mismatch_is_not_reported_as_a_concurrent_edit() {
         let mismatch = update_conflict_message("knowledge", "credential");
-        assert_ne!(
-            mismatch.1,
-            "条目已在其他窗口修改或删除，请重新加载后再保存"
-        );
+        assert_ne!(mismatch.1, "条目已在其他窗口修改或删除，请重新加载后再保存");
         assert_eq!(
             update_conflict_message("knowledge", "knowledge").1,
             "条目已在其他窗口修改或删除，请重新加载后再保存"
@@ -396,14 +308,15 @@ pub async fn detail(
     Extension(auth): Extension<Auth>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Item>> {
-    let row = sqlx::query_as::<_, ItemRow>("SELECT * FROM items WHERE id=$1")
-        .bind(id)
-        .fetch_one(&state.db)
-        .await?;
+    let row =
+        sqlx::query_as::<_, ItemRow>("SELECT * FROM items WHERE id=$1 AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await?;
     Ok(Json(row.public(auth.key.as_ref(), true)?))
 }
 
-async fn insert(
+pub(crate) async fn insert(
     tx: &mut Transaction<'_, Postgres>,
     id: Uuid,
     input: &mut ItemInput,
@@ -430,7 +343,7 @@ fn seal(id: Uuid, input: &ItemInput, auth: &Auth) -> Result<(Value, Option<Vec<u
         Ok((input.data.clone(), None))
     }
 }
-async fn save(
+pub(crate) async fn save(
     tx: &mut Transaction<'_, Postgres>,
     id: Uuid,
     input: &mut ItemInput,
@@ -441,7 +354,7 @@ async fn save(
         .revision
         .ok_or_else(|| AppError::bad("更新必须携带 revision，请重新加载条目"))?;
     let stored_kind: Option<String> =
-        sqlx::query_scalar("SELECT kind FROM items WHERE id=$1")
+        sqlx::query_scalar("SELECT kind FROM items WHERE id=$1 AND deleted_at IS NULL")
             .bind(id)
             .fetch_optional(&mut **tx)
             .await?;
@@ -452,10 +365,10 @@ async fn save(
         return Err(update_conflict_message(&stored_kind, &input.kind));
     }
     let (data, secret) = seal(id, input, auth)?;
-    let row = sqlx::query_as::<_,ItemRow>("UPDATE items SET title=$2,category=$3,project=$4,tags=$5,summary=$6,url=$7,data=$8,secret=$9,favorite=$10,revision=revision+1,updated_at=now() WHERE id=$1 AND revision=$11 AND kind=$12 RETURNING *")
+    let row = sqlx::query_as::<_,ItemRow>("UPDATE items SET title=$2,category=$3,project=$4,tags=$5,summary=$6,url=$7,data=$8,secret=$9,favorite=$10,revision=revision+1,updated_at=now() WHERE id=$1 AND revision=$11 AND kind=$12 AND deleted_at IS NULL RETURNING *")
         .bind(id).bind(&input.title).bind(&input.category).bind(&input.project).bind(&input.tags).bind(&input.summary).bind(&input.url).bind(data).bind(secret).bind(input.favorite).bind(revision).bind(&input.kind).fetch_optional(&mut **tx).await?;
     row.ok_or_else(|| update_conflict_message(&stored_kind, &input.kind))?
-    .public(auth.key.as_ref(), true)
+        .public(auth.key.as_ref(), true)
 }
 
 pub(crate) fn update_conflict_message(stored_kind: &str, requested_kind: &str) -> AppError {
@@ -564,15 +477,19 @@ pub async fn delete(
     if kind == "credential" {
         auth.vault()?;
     }
-    sqlx::query("DELETE FROM items WHERE id=$1")
-        .bind(id)
-        .execute(&state.db)
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT set_config('infohub.change_reason','trash',true)")
+        .execute(&mut *tx)
         .await?;
-    state.file_cleanup.notify_one();
+    sqlx::query("UPDATE items SET deleted_at=now(),updated_at=now(),revision=revision+1 WHERE id=$1 AND deleted_at IS NULL")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 pub struct IngestInput {
     pub url: String,
     #[serde(default)]
@@ -582,7 +499,7 @@ pub struct IngestInput {
     #[serde(default)]
     pub tags: Vec<String>,
 }
-async fn persist_images(
+pub(crate) async fn persist_images(
     tx: &mut Transaction<'_, Postgres>,
     item_id: Uuid,
     collected: &Collected,
@@ -593,7 +510,7 @@ async fn persist_images(
     }
     Ok(())
 }
-async fn stage_images(state: &AppState, collected: &Collected) -> Result<()> {
+pub(crate) async fn stage_images(state: &AppState, collected: &Collected) -> Result<()> {
     for image in &collected.images {
         files::stage(
             &state.db,
@@ -631,11 +548,12 @@ pub async fn refresh(
     Extension(auth): Extension<Auth>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    let previous = sqlx::query_as::<_, ItemRow>("SELECT * FROM items WHERE id=$1")
-        .bind(id)
-        .fetch_one(&state.db)
-        .await?
-        .public(auth.key.as_ref(), true)?;
+    let previous =
+        sqlx::query_as::<_, ItemRow>("SELECT * FROM items WHERE id=$1 AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await?
+            .public(auth.key.as_ref(), true)?;
     let url = if previous.kind == "credential" {
         previous.data["fields"]["swaggerUrl"]
             .as_str()
@@ -664,6 +582,8 @@ pub async fn refresh(
         "localWorkspacePath",
         "readerMode",
         "globalHeaders",
+        "environments",
+        "activeEnvironment",
     ] {
         if let Some(value) = previous.data.get(field) {
             collected.input.data[field] = value.clone();
@@ -681,6 +601,9 @@ pub async fn refresh(
     collected.input.validate()?;
     stage_images(&state, &collected).await?;
     let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT set_config('infohub.change_reason','sync',true)")
+        .execute(&mut *tx)
+        .await?;
     let item = save(&mut tx, id, &mut collected.input, &auth).await?;
     sqlx::query("DELETE FROM media WHERE item_id=$1")
         .bind(id)
@@ -693,7 +616,12 @@ pub async fn refresh(
     Ok(Json(json!({"item":item,"warnings":collected.warnings})))
 }
 
-async fn ingest_linked_repos(state: &AppState, auth: &Auth, item: &Item, warnings: &mut Vec<String>) {
+pub(crate) async fn ingest_linked_repos(
+    state: &AppState,
+    auth: &Auth,
+    item: &Item,
+    warnings: &mut Vec<String>,
+) {
     if item.kind != "knowledge" {
         return;
     }
@@ -713,12 +641,14 @@ async fn persist_linked_repo(
     article: &Item,
     url: &str,
 ) -> Result<Option<String>> {
-    let exists: Option<Uuid> =
-        sqlx::query_scalar("SELECT id FROM items WHERE kind='repo' AND url=$1")
-            .bind(url)
-            .fetch_optional(&state.db)
-            .await?;
-    if exists.is_some() {
+    let exists: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM items WHERE kind='repo' AND url=$1 AND deleted_at IS NULL",
+    )
+    .bind(url)
+    .fetch_optional(&state.db)
+    .await?;
+    if let Some(existing) = exists {
+        sqlx::query("INSERT INTO item_relations(source_id,target_id,label) VALUES($1,$2,'文中引用') ON CONFLICT DO NOTHING").bind(article.id).bind(existing).execute(&state.db).await?;
         return Ok(None);
     }
     let mut collected = ingestion::collect(state, url, "repo").await?;
@@ -738,6 +668,7 @@ async fn persist_linked_repo(
         }
     };
     tx.commit().await?;
+    sqlx::query("INSERT INTO item_relations(source_id,target_id,label) VALUES($1,$2,'文中引用') ON CONFLICT DO NOTHING").bind(article.id).bind(saved.id).execute(&state.db).await?;
     Ok(Some(saved.title))
 }
 
@@ -845,12 +776,7 @@ fn merge_parameters(current: &mut Value, previous: &Value, headers: bool) {
     }
 }
 
-pub async fn probe(
-    State(state): State<AppState>,
-    Extension(auth): Extension<Auth>,
-    Json(input): Json<ProbeInput>,
-) -> Result<Json<Value>> {
-    auth.vault()?;
+pub(crate) async fn perform_probe(state: &AppState, input: ProbeInput) -> Result<Value> {
     if input
         .body
         .as_ref()
@@ -885,19 +811,20 @@ pub async fn probe(
     let text = std::str::from_utf8(&response.bytes)
         .ok()
         .filter(|text| !text.contains('\0'));
-    Ok(Json(json!({
+    Ok(json!({
         "status":response.status, "headers":response.headers,
         "body":text.unwrap_or_default(),
         "bodyBase64": if text.is_none() { Some(STANDARD.encode(&response.bytes)) } else { None },
         "durationMs":start.elapsed().as_millis(), "size":response.bytes.len()
-    })))
+    }))
 }
 
 async fn check_item(state: &AppState, auth: &Auth, id: Uuid) -> Result<String> {
-    let kind: String = sqlx::query_scalar("SELECT kind FROM items WHERE id=$1")
-        .bind(id)
-        .fetch_one(&state.db)
-        .await?;
+    let kind: String =
+        sqlx::query_scalar("SELECT kind FROM items WHERE id=$1 AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await?;
     if kind == "credential" {
         auth.vault()?;
     }
@@ -1026,7 +953,7 @@ pub async fn delete_attachment(
 }
 pub async fn media(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Response> {
     let (mime, storage_key): (String, String) =
-        sqlx::query_as("SELECT mime,storage_key FROM media WHERE id=$1")
+        sqlx::query_as("SELECT mime,storage_key FROM media WHERE id=$1 UNION ALL SELECT mime,storage_key FROM version_media WHERE media_id=$1 LIMIT 1")
             .bind(id)
             .fetch_one(&state.db)
             .await?;

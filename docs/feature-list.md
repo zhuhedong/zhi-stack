@@ -1,6 +1,6 @@
 # 项目完整功能清单
 
-整理日期：2026-09-10。依据当前 React 界面、Rust 路由、PostgreSQL 迁移、Tauri 入口及有效设计资料。
+整理日期：2026-09-11，版本 0.2.0。依据当前 React 界面、Rust 路由、PostgreSQL 迁移、Tauri 入口及有效设计资料。本轮新增能力与实际验收见 [0.2.0 说明](release-0.2.0.md)，旧日期报告保留为历史记录。
 
 InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、GitHub 项目、服务器与凭证三类；以下将各工作区和公共能力分别展开。“已实现”表示当前代码有对应实现，实际验证范围以 [验收记录](verification.md)、[逐项核查](functional-audit.md) 和 [业务复查](business-review.md) 为准。
 
@@ -45,10 +45,10 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 编辑标题、分类、所属项目、标签、摘要、来源地址及对应类型的业务字段。
 - 手工录入文章正文、仓库本地资料或凭证；凭证表单按协议带出默认字段。
 - 标题、URL、数据类型、字段数量等校验；无效提交返回错误。
-- 删除前显示确认，删除资产时级联清理附件和离线图片。
+- 删除前显示确认，资产移入回收站，附件、离线图片和历史版本继续保留；回收站支持恢复和明确确认的永久删除。
 - 新建/收录成功后定位新条目；保存和删除后更新列表与分组统计。
 
-删除是永久删除，当前没有回收站。依据：[ItemEditor.tsx](../src/components/ItemEditor.tsx)、[model.rs](../server/src/model.rs)、[routes.rs](../server/src/routes.rs)。
+永久删除不可撤销；无引用文件由后台清理。依据：[DataManager.tsx](../src/components/DataManager.tsx)、[lifecycle.rs](../server/src/lifecycle.rs)、[routes.rs](../server/src/routes.rs)。
 
 ## 5. 项目归档、标签与收藏
 
@@ -59,7 +59,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 收藏不会丢弃当前正文、笔记或接口参数草稿。
 - 同步远程资料时保留项目、标签和收藏状态。
 
-项目和标签目前是资产字段，尚无独立的项目/标签管理页、层级目录或批量重命名。依据：[ItemEditor.tsx](../src/components/ItemEditor.tsx)、[Sidebar.tsx](../src/components/Sidebar.tsx)、[routes.rs](../server/src/routes.rs)。
+独立项目支持创建、说明、重命名、归档及跨类型资产总览；重命名同步更新资产归属。可批量归档资产、移动项目、增减和合并标签，资产之间可建立双向关联；文章采集出的仓库保留来源关联。当前没有项目成员、任务看板或层级目录。依据：[ProjectHub.tsx](../src/components/ProjectHub.tsx)、[OrganizePanel.tsx](../src/components/OrganizePanel.tsx)、[projects.rs](../server/src/projects.rs)。
 
 ## 6. 检索、筛选、分页与快捷键
 
@@ -69,7 +69,8 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 文章来源、仓库语言、凭证协议和项目筛选；仓库语言选项包含实际收录的其他语言。
 - 收藏可与检索组合；服务端返回总数与分页数据，前端分批加载。
 - 普通列表直接由 PG 分页，不读取全库正文；检索按实际文本匹配路径、引号与换行，搜索过程不持久保存凭证明文。
-- 默认按更新时间倒序，使用 ID 保持同时间记录顺序；界面没有其他排序选项。
+- 支持更新时间、创建时间、标题和相关度排序，展示命中片段；凭证搜索片段不显示敏感字段值。
+- 最近访问、常用资料、稍后读及归档视图；支持加密保存筛选条件并再次使用。
 - `J/K` 导航、`Ctrl/Cmd+F` 全局搜索；输入框之外粘贴 HTTP(S) 链接打开收录表单。
 
 服务端单次返回 1–200 条，前端每批 100 条。当前检索为关键词包含匹配，不包含语义/向量检索。依据：[App.tsx](../src/App.tsx)、[routes.rs](../server/src/routes.rs)。
@@ -86,7 +87,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - OpenAPI 同步保留 Base URL、全局 Headers、匹配接口的参数值/启用状态/正文，同时补充新定义。
 - 自定义连接字段与备注在同步、内联导入后保留；手动指定文章类型时不因 Swagger 关键词改变分类。
 
-当前通过用户操作触发收录和同步，没有后台任务队列、定时同步或订阅通知。依据：[IngestModal.tsx](../src/components/IngestModal.tsx)、[ingest.rs](../server/src/ingest.rs)、[routes.rs](../server/src/routes.rs)。
+收录表单提交持久后台任务，任务中心显示阶段、失败原因，支持重试和取消；服务重启后按检查点恢复。自动识别和 OpenAPI 输入加密，重启后等待已登录的解锁会话。重新同步前提示正文覆盖，版本历史保留同步前内容及图片。仓库订阅独立定时检查更新，见第 9 节。依据：[TaskCenter.tsx](../src/components/TaskCenter.tsx)、[jobs.rs](../server/src/jobs.rs)。
 
 ## 8. 知识文章与 Markdown 阅读
 
@@ -96,6 +97,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - Markdown 标题、列表、引用、代码块、链接，以及 GFM 表格、任务列表、删除线展示。
 - 导出当前 Markdown，打开原文；正文相对链接按来源 URL 解析。
 - 展示已归档图片和失败占位；支持关联附件。
+- 保存阅读进度、稍后读和独立批注；批注有自己的版本冲突检查及草稿恢复。
 
 登录墙、验证码、动态渲染和非 UTF-8 页面可能无法抓取。当前没有富文本编辑器或应用级离线缓存。依据：[KnowledgeView.tsx](../src/components/views/KnowledgeView.tsx)、[Markdown.tsx](../src/components/Markdown.tsx)、[ingest.rs](../server/src/ingest.rs)。
 
@@ -109,7 +111,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - README/Release 暂时请求失败保留上次成功内容；仓库改名/迁移后使用 GitHub 返回的正式名称。
 - 服务端可选配置 `GITHUB_TOKEN` 提高配额或访问已授权仓库；私有仓库尚未实测。
 
-当前只展示最新 Release，没有历史版本列表、更新订阅或完整 Git 操作。依据：[RepoView.tsx](../src/components/views/RepoView.tsx)、[ingest.rs](../server/src/ingest.rs)。
+仓库可开启每 1–168 小时的订阅检查、手动检查、查看未读变化及最近检查记录。检查更新快照不覆盖本地 README 和笔记；读取旧提示不会清除后来到达的更新。当前不提供完整 Git 操作。依据：[RepoSubscription.tsx](../src/components/RepoSubscription.tsx)、[subscriptions.rs](../server/src/subscriptions.rs)。
 
 ## 10. 本地工作区与实践笔记
 
@@ -174,7 +176,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 原始请求正文编辑、JSON 格式化、错误提示；GET/HEAD 不发送正文。
 - Headers、Params、Body 页签；保存参数到加密凭证。
 
-当前没有自动构造 multipart 文件正文、多环境变量、前后置脚本或接口批量执行器。依据：[ApiWorkbench.tsx](../src/components/ApiWorkbench.tsx)、[PairEditor.tsx](../src/components/PairEditor.tsx)、[request.ts](../src/lib/request.ts)。
+支持创建和切换环境，使用 `{{变量名}}` 引用地址、请求头、参数和正文；支持嵌套引用并检测缺失或循环变量，环境与凭证整体加密。当前没有自动构造 multipart 文件正文、前后置脚本或接口批量执行器。依据：[ApiEnvironments.tsx](../src/components/ApiEnvironments.tsx)、[request.ts](../src/lib/request.ts)。
 
 ## 15. 全局请求头与接口覆盖
 
@@ -196,7 +198,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 请求中状态；切换接口或更改参数后忽略旧响应，避免结果串到其他接口。
 - 请求正文上限 2 MB、响应上限 8 MB、请求超时 30 秒；调试请求不自动跟随重定向。
 
-响应保留在当前界面状态，未持久保存请求历史或响应历史；尚无手动取消请求按钮。依据：[ApiWorkbench.tsx](../src/components/ApiWorkbench.tsx)、[routes.rs](../server/src/routes.rs)、[net.rs](../server/src/net.rs)。
+请求和响应历史加密持久化，支持查看、删除及按原请求重放；重启不会自动重放写操作。历史正文限制为前 1 MiB 文本并限制编码大小，较大二进制不持久保留，界面显示截断提示。手动取消中止等待，迟到结果不覆盖取消状态；目标端已执行的操作不能撤销。依据：[RequestHistory.tsx](../src/components/RequestHistory.tsx)、[useProbe.ts](../src/lib/useProbe.ts)、[api_history.rs](../server/src/api_history.rs)。
 
 ## 17. 附件与白皮书
 
@@ -204,7 +206,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 多文件选择并依次上传，显示文件数量、名称和大小；单文件最大 10 MB。
 - 下载原始内容并保留文件名，支持中文名称；删除前确认，上传/下载期间显示忙碌状态。
 - 凭证附件先加密再存入服务器磁盘或 Cloudflare R2，PG 只保存文件信息和位置；金库锁定后禁止列举、上传、下载和删除。
-- 删除资产时级联删除附件；普通文章和仓库附件不受金库锁定影响。
+- 资产移入回收站时保留附件，永久删除后清理；普通文章和仓库附件不受金库锁定影响。
 
 尚无附件预览、备注编辑、文件夹管理、全文索引或直接调用本地程序打开附件。多文件上传不是整体事务，前面已上传成功的文件会保留。依据：[Attachments.tsx](../src/components/Attachments.tsx)、[routes.rs](../server/src/routes.rs)。
 
@@ -214,7 +216,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 单篇最多归档 30 张 PNG/JPEG/GIF/WebP，文章内相同来源图片复用。
 - 正文使用受登录保护的媒体地址，前端鉴权读取后展示并按需加载。
 - 未归档或失败的图片显示占位和提示；外部 SVG 不作为活动内容执行。
-- 重抓文章更新媒体；删除文章清理关联图片。
+- 重抓文章更新媒体，历史版本保留原图片引用；回收站保留图片，最后一个有效引用移除后清理文件。
 
 归档后可脱离文章来源阅读，但仍需要 InfoHub 服务、PG 和文件存储。GitHub README 的外部图片不会通过此流程自动归档。依据：[Markdown.tsx](../src/components/Markdown.tsx)、[ingest.rs](../server/src/ingest.rs)、[routes.rs](../server/src/routes.rs)。
 
@@ -222,11 +224,11 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 
 - 复制单个凭证字段、连接命令、工作区路径和完整 cURL；成功反馈或失败提示。
 - 导出当前文章 Markdown；当前未保存的正文也可以导出。
-- Markdown 不附带离线图片包，内部媒体引用仍依赖 InfoHub 登录读取。
+- 另提供 Markdown 与图片 ZIP 导出，将内部媒体引用改写为包内相对路径，可脱离服务阅读。
 - 下载附件、HTTP 文本响应 `.txt`、二进制响应 `.bin`。
 - 下载生成的临时 Blob URL 在使用后释放。
 
-当前没有全库导入/导出、ZIP 打包、凭证批量导出或 OpenAPI 规范导出。复制仅写入系统剪贴板，没有“30 秒后自动清除”的实际实现。依据：[api.ts](../src/lib/api.ts)、[KnowledgeView.tsx](../src/components/views/KnowledgeView.tsx)、[ApiWorkbench.tsx](../src/components/ApiWorkbench.tsx)。
+完整工作台可导出加密 `.infohub` 备份，恢复到空实例或在校验身份并明确确认后替换已有实例。不是明文凭证导出或 OpenAPI 规范导出。复制仅写入系统剪贴板，没有“30 秒后自动清除”的实际实现。依据：[DataManager.tsx](../src/components/DataManager.tsx)、[backup.rs](../server/src/backup.rs)。
 
 ## 20. 草稿、冲突处理与操作反馈
 
@@ -238,7 +240,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - Toast 操作提示支持自动消失和手动关闭；弹窗使用原生 dialog、首个输入框聚焦和 Escape 关闭处理。
 - 输入及按钮有基础语义标签，状态/错误使用相应辅助阅读语义。
 
-草稿没有写入本地持久存储，不提供崩溃恢复、自动保存或版本历史。Toast 不是持久通知中心。原生关闭保护尚待实机验收，未进行完整无障碍审计。依据：[App.tsx](../src/App.tsx)、[useDraft.ts](../src/lib/useDraft.ts)、[Modal.tsx](../src/components/Modal.tsx)、[error.rs](../server/src/error.rs)。
+草稿自动持久保存，重新进入时由用户选择恢复或丢弃。普通资料有本机离线备用草稿；凭证、环境与敏感表单只写入服务端加密草稿，锁定后不显示内容。版本历史可查看并按当前 revision 回滚。Toast 不是系统通知；原生关闭保护尚待实机验收，未进行完整无障碍审计。依据：[usePersistentDraft.ts](../src/lib/usePersistentDraft.ts)、[VersionHistory.tsx](../src/components/VersionHistory.tsx)、[lifecycle.rs](../server/src/lifecycle.rs)。
 
 ## 21. PostgreSQL 持久化与数据一致性
 
@@ -251,7 +253,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 自动执行 SQLx 迁移；连接池、连接超时、事务保存、外键级联删除、来源唯一约束及索引。
 - 服务重启后记录保持，可重新登录解密凭证；不使用运行时模拟数据或 SQLite。
 
-当前没有备份/恢复 API、定时备份脚本或存储切换向导。备份需覆盖完整 PG 数据库（含金库配置）和对应磁盘/R2 文件；连接池不是高可用或自动故障切换。依据：[数据库迁移](../server/migrations/0002_external_files.sql)、[文件管理](../server/src/files.rs)、[文件存储说明](file-storage.md)。
+备份/恢复 API 和维护 CLI 覆盖资产、历史、文件及 0.2 新增业务表。维护期间协调并发请求和后台任务，先完整验证再事务恢复，失败保留现有数据。支持恢复到不同文件后端的干净实例；原始快照仍需同时覆盖 PG 和对应文件。CLI 可由部署者接入自己的定时任务，应用内没有备份调度器；连接池不是高可用。依据：[backup.rs](../server/src/backup.rs)、[运维手册](operations.md)。
 
 ## 22. 网络与服务端安全
 
@@ -263,7 +265,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - CORS 来源限制，API `no-store`，`nosniff`、禁止页面被框架嵌入、Referrer 限制；桌面 CSP。
 - 数据库错误在服务端记录，前端显示概括错误；上游连接失败不回显可能包含密钥的 URL。
 
-当前没有多人权限、操作审计日志、主密码修改/找回流程或端到端多设备密钥管理。依据：[auth.rs](../server/src/auth.rs)、[crypto.rs](../server/src/crypto.rs)、[net.rs](../server/src/net.rs)、[lib.rs](../server/src/lib.rs)。
+支持校验旧密码后更换主密码，原子重加密凭证、附件、历史、草稿及其他敏感记录，撤销旧会话；旧备份仍使用备份时的密码。当前没有多人权限、完整操作审计日志、密码找回或端到端多设备密钥管理。依据：[auth.rs](../server/src/auth.rs)、[backup.rs](../server/src/backup.rs)。
 
 ## 23. 配置、服务运行与部署
 
@@ -302,7 +304,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - SVG 主稿、小尺寸稿、单色稿，PNG、ICO、ICNS、Apple Touch 与 Windows Store 资源。
 - 图标重新生成、实际尺寸预览、Windows EXE 七档图标资源校验；只修改图标也会触发资源重编译。
 
-已有 Windows debug EXE 构建记录；没有完成 MSI/NSIS 安装卸载、签名和跨机器验证。桌面端仍需独立运行服务与 PG；未提供托盘、自动更新或后端一键托管。macOS 图标资源不表示 macOS 客户端已经验收。依据：[Tauri 配置](../src-tauri/tauri.conf.json)、[桌面入口](../src-tauri/src/lib.rs)、[图标说明](../assets/brand/README.md)。
+Windows 发布流程生成 release EXE、NSIS 安装器、独立服务端、前端、运维文档与 SHA-256 清单，要求当前源码的完整验收报告通过。实际产物及安装验证状态见 [本版说明](release-0.2.0.md)。桌面端仍需独立服务与 PG，未提供托盘、自动更新或后端一键托管；macOS 图标资源不表示 macOS 已验收。
 
 ## 25. 测试、验收与开发辅助
 
@@ -313,11 +315,20 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 可选公开 GitHub 网络验收及保持隔离验收页面的运行模式。
 - 历史验收通过 21 组 PG 集成、37 项单元/组件检查；图标有独立构建与资源检查流程。
 
-2026-09-10 复查验收：磁盘 22 组、R2 协议 23 组 PG 集成检查；磁盘迁移/恢复 5 组、R2 迁移/启动 4 组；9 项服务端单元测试、22 项原有 React 组件测试、8 项连接和设置测试通过。R2 使用本地签名校验服务，未连接真实 Cloudflare 账号。修复和待验范围见 [复查报告](architecture-review.md)。
+当前执行 `npm run verify:release`，报告记录源码摘要、构建、单元/组件及各业务集成检查。有 Docker 时追加 `-- --docker` 验证非 root 容器、重启、备份与恢复。R2 协议检查使用本地签名校验服务，不等同真实 Cloudflare 部署。当前数量及待验范围见 [本版说明](release-0.2.0.md)；旧日期结果保留在 [验收记录](verification.md)。
+
+## 26. 引导、使用统计与反馈
+
+- 首次收录、归属项目和再次打开资料的引导按实际数据更新，可隐藏或从设置重新打开。
+- 区分连接已有服务与自行部署，提供实际配置步骤、健康检查和连接诊断。
+- 本工作台统计首次获得价值的时间、活跃日期、资料复用和阶段事件；只记录固定事件名、时间与可选资产编号，不保存搜索词、密码或正文。
+- 可关闭收集、清空统计或导出；默认启用，关闭状态随重启和整库恢复保留。
+- 加密反馈包含分类、评分与文本，支持解决标记、删除和导出；锁定不能读取。
+- 真实参与者试用使用 [任务协议和记录模板](trial-protocol.md)。自动化测试和个人工作台活跃日期不表示已经验证了用户留存。
 
 ## 服务端接口清单
 
-共 15 个路径、20 个“方法 + 路径”组合。除前三个公开入口外，均要求登录。金库限制由实际处理的资产类型决定。
+以下保留基础接口说明；0.2 的新增路由族列于表后。除健康、初始化、登录及受独立密码校验的恢复入口外，业务操作要求登录。金库限制由实际处理的数据类型决定，精确路径以 [路由注册](../server/src/lib.rs) 为准。
 
 | 方法   | 路径                          | 功能及附加条件                                         |
 | ------ | ----------------------------- | ------------------------------------------------------ |
@@ -332,7 +343,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 | POST   | `/api/items`                  | 创建资产；创建凭证要求解锁                             |
 | GET    | `/api/items/{id}`             | 详情；凭证详情要求解锁                                 |
 | PUT    | `/api/items/{id}`             | 更新资产，检查 revision；凭证更新要求解锁              |
-| DELETE | `/api/items/{id}`             | 永久删除及关联清理；删除凭证要求解锁                   |
+| DELETE | `/api/items/{id}`             | 移入回收站并保留文件和历史；删除凭证要求解锁           |
 | POST   | `/api/items/{id}/refresh`     | 重新采集同步；凭证同步要求解锁                         |
 | POST   | `/api/ingest`                 | 收录文章、GitHub 或 OpenAPI；收录为凭证要求解锁        |
 | POST   | `/api/probe`                  | 服务端发送 HTTP 请求；要求解锁                         |
@@ -342,7 +353,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 | DELETE | `/api/attachments/{id}`       | 删除附件；凭证附件要求解锁                             |
 | GET    | `/api/media/{id}`             | 鉴权读取文章归档图片                                   |
 
-路由依据：[server/src/lib.rs](../server/src/lib.rs)。收藏通过资产更新接口保存，统计由列表接口返回；没有另外的收藏、统计或项目 CRUD 路由。
+0.2 新增项目 CRUD、资产关系、阅读状态与访问记录、保存筛选、批量整理与标签合并、历史版本、回收站恢复/永久删除、草稿、备份/恢复/密码轮换、后台收录任务、仓库订阅、请求历史及取消、使用统计、引导、活动计数和反馈路由。收藏仍通过资产更新接口保存。
 
 ## 原型提示与当前实现的差异
 
@@ -350,13 +361,13 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 | ---------------------- | -------------------------------------------------------------- |
 | “复制后 30 秒自动清除” | 原型有此提示；正式代码只复制，未实现自动清除                   |
 | 附件“在本地打开”       | 原型为提示操作；正式版提供下载，未调用系统程序打开附件         |
-| “GitHub 项目雷达”      | 仓库资料和最新 Release 的手动同步，没有订阅/推送后台           |
+| “GitHub 项目雷达”      | 仓库资料、手动同步、定时订阅和工作台未读提示；没有外部推送      |
 | “离线阅读”             | 正文在 PG、图片在服务端磁盘/R2；服务端不可用时没有本地缓存阅读 |
-| “业务项目”             | 资产上的项目归档字段，没有独立项目实体、成员、任务或看板       |
+| “业务项目”             | 独立项目实体和跨类型资产总览；没有成员、任务或看板             |
 | “AI 向量”              | Milvus/Qdrant 凭证模板，不包含 AI 对话、向量检索或知识库推理   |
-| “通知”                 | 短暂操作反馈，不包含消息中心或系统通知订阅                     |
-| “版本冲突”             | 乐观并发保护，不包含历史版本回看、差异合并或回滚               |
-| “桌面打包”             | 已构建 debug EXE；独立服务/PG、安装器和分发仍需各自处理        |
+| “通知”                 | 短暂反馈、持久任务和仓库未读更新；没有系统或邮件通知           |
+| “版本冲突”             | 乐观并发保护、历史查看与回滚；没有自动差异合并                 |
+| “桌面打包”             | release EXE 与 NSIS 发布流程；独立服务/PG 仍需配置             |
 
 这些差异不记作已实现功能，也不表示已确定新增需求。原型依据：[亮色交互原型](../dosc/infohub_apple_light.html)。
 

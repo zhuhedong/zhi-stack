@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Check, Code2, Download, FileText, Image, Save } from 'lucide-react';
 import type { Item } from '../../types';
 import { dateLabel } from '../../types';
-import { errorMessage, exportText, saveItem } from '../../lib/api';
+import { downloadBlob, errorMessage, exportText, request, saveItem } from '../../lib/api';
 import { Markdown } from '../Markdown';
 import { Attachments } from '../Attachments';
 import { useDraft } from '../../lib/useDraft';
+import { usePersistentDraft } from '../../lib/usePersistentDraft';
+import { DraftNotice } from '../DraftNotice';
+import { ReadingTools } from '../ReadingTools';
 export function KnowledgeView({
   item,
   onSaved,
@@ -18,10 +21,28 @@ export function KnowledgeView({
   const storedMode = item.data.readerMode === 'markdown' ? 'markdown' : 'flow';
   const [mode, setMode] = useState<'flow' | 'markdown'>(storedMode);
   const [text, setText] = useState(item.data.content || '');
-  const draft = useDraft(onDirty);
+  const dirtyParts = useRef({ article: false, reading: false });
+  const reportDirty = (part: 'article' | 'reading', value: boolean) => {
+    dirtyParts.current[part] = value;
+    onDirty(dirtyParts.current.article || dirtyParts.current.reading);
+  };
+  const draft = useDraft((value) => reportDirty('article', value));
   const { dirty } = draft;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const persistence = usePersistentDraft({
+    scope: `article:${item.id}`,
+    kind: item.kind,
+    itemId: item.id,
+    revision: item.revision,
+    value: { text, mode },
+    dirty,
+    onRestore: (value) => {
+      setText(value.text);
+      setMode(value.mode);
+      draft.change();
+    },
+  });
   const setReaderMode = (next: 'flow' | 'markdown') => {
     setMode(next);
     if (next !== storedMode) draft.change();
@@ -35,6 +56,7 @@ export function KnowledgeView({
         { ...item, data: { ...item.data, content: text, readerMode: mode } },
         item.id,
       );
+      await persistence.clear({ text, mode });
       if (draft.saved(snapshot)) onSaved(updated);
     } catch (e) {
       setError(errorMessage(e));
@@ -44,6 +66,7 @@ export function KnowledgeView({
   }
   return (
     <div className="canvas article-canvas">
+      <DraftNotice draft={persistence} />
       <div className="content-title">
         <div className="title-tags">
           {item.tags.map((t) => (
@@ -82,6 +105,23 @@ export function KnowledgeView({
           <Download size={13} />
           导出
         </button>
+        <button
+          className="text-button"
+          disabled={busy || dirty}
+          title={dirty ? '请先保存修改，再导出图片包' : '导出 Markdown 和图片'}
+          onClick={() => {
+            setBusy(true);
+            setError('');
+            void request(`/items/${item.id}/export`)
+              .then((response) => response.blob())
+              .then((blob) => downloadBlob(blob, item.title + '.zip'))
+              .catch((e) => setError(errorMessage(e)))
+              .finally(() => setBusy(false));
+          }}
+        >
+          <Download size={13} />
+          包含图片
+        </button>
       </div>
       {item.summary && <blockquote className="article-summary">{item.summary}</blockquote>}
       {error && (
@@ -109,6 +149,7 @@ export function KnowledgeView({
         </section>
       )}
       <Attachments id={item.id} />
+      <ReadingTools item={item} onDirty={(value) => reportDirty('reading', value)} />
     </div>
   );
 }

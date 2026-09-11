@@ -4,7 +4,10 @@ import { api, API_BASE, errorMessage, setToken } from '../lib/api';
 import { BrandIcon } from './BrandIcon';
 import { isDesktop } from '../lib/platform';
 import { ServerSettings } from './ServerSettings';
+import { RestoreForm } from './DataManager';
+import { Modal } from './Modal';
 import { serverInitialized } from '../lib/server';
+import { DeploymentSteps } from './DeploymentSteps';
 
 export function AuthScreen({
   onLogin,
@@ -20,6 +23,9 @@ export function AuthScreen({
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [settings, setSettings] = useState(initialServerSettings);
+  const [restore, setRestore] = useState(false);
+  const [deploymentGuide, setDeploymentGuide] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   useEffect(() => {
     let alive = true;
     const abort = new AbortController();
@@ -175,6 +181,14 @@ export function AuthScreen({
             </button>
           )}
           <div className="auth-server mono">服务地址：{API_BASE}</div>
+          <button className="text-button" disabled={busy} onClick={() => setDeploymentGuide(true)}>
+            首次连接与部署指南
+          </button>
+          {initialized === false && (
+            <button className="text-button" disabled={busy} onClick={() => setRestore(true)}>
+              从已有备份恢复工作台
+            </button>
+          )}
           {isDesktop && (
             <button className="text-button" disabled={busy} onClick={() => setSettings(true)}>
               服务连接设置
@@ -197,6 +211,33 @@ export function AuthScreen({
             setRefresh((value) => value + 1);
           }}
         />
+      )}
+      {restore && (
+        <Modal
+          title="恢复已有工作台"
+          onClose={() => {
+            if (!restoring) setRestore(false);
+          }}
+        >
+          <div className="modal-body">
+            <RestoreForm
+              initialized={false}
+              onBusy={setRestoring}
+              onRestored={() => {
+                setRestore(false);
+                setInitialized(null);
+                setRefresh((value) => value + 1);
+              }}
+            />
+          </div>
+        </Modal>
+      )}
+      {deploymentGuide && (
+        <Modal title="首次连接与部署" onClose={() => setDeploymentGuide(false)}>
+          <div className="modal-body">
+            <DeploymentSteps />
+          </div>
+        </Modal>
       )}
     </div>
   );

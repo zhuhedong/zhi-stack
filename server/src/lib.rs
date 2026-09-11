@@ -1,12 +1,20 @@
+pub mod api_history;
 pub mod auth;
+pub mod backup;
 pub mod crypto;
 pub mod error;
 pub mod files;
 pub mod ingest;
+pub mod insights;
+pub mod jobs;
+pub mod library;
+pub mod lifecycle;
 pub mod model;
 pub mod net;
+pub mod projects;
 pub mod routes;
 pub mod storage;
+pub mod subscriptions;
 
 use axum::{
     extract::DefaultBodyLimit,
@@ -17,7 +25,7 @@ use axum::{
 };
 use sqlx::PgPool;
 use std::{sync::Arc, time::Instant};
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, RwLock};
 use tower_http::{
     cors::CorsLayer,
     services::{ServeDir, ServeFile},
@@ -33,6 +41,14 @@ pub struct AppState {
     pub login_attempts: Arc<Mutex<(Instant, u32)>>,
     pub network: net::Network,
     pub github_token: Option<String>,
+    pub maintenance: Arc<RwLock<()>>,
+    pub active_requests:
+        Arc<Mutex<std::collections::HashMap<uuid::Uuid, tokio_util::sync::CancellationToken>>>,
+    pub active_jobs:
+        Arc<Mutex<std::collections::HashMap<uuid::Uuid, tokio_util::sync::CancellationToken>>>,
+    pub jobs_notify: Arc<Notify>,
+    pub subscriptions_notify: Arc<Notify>,
+    pub github_api_base: String,
 }
 impl AppState {
     pub fn new(db: PgPool, storage: storage::FileStorage) -> Self {
@@ -52,16 +68,68 @@ impl AppState {
                     .collect(),
             },
             github_token: std::env::var("GITHUB_TOKEN").ok().filter(|s| !s.is_empty()),
+            maintenance: Arc::new(RwLock::new(())),
+            active_requests: Default::default(),
+            active_jobs: Default::default(),
+            jobs_notify: Default::default(),
+            subscriptions_notify: Default::default(),
+            github_api_base: std::env::var("GITHUB_API_BASE")
+                .unwrap_or_else(|_| "https://api.github.com".into()),
         }
     }
 }
 pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/session", get(auth::session))
+        .route(
+            "/usage",
+            get(insights::usage)
+                .put(insights::settings)
+                .delete(insights::clear),
+        )
+        .route(
+            "/onboarding",
+            get(insights::onboarding).put(insights::set_onboarding),
+        )
+        .route(
+            "/feedback",
+            get(insights::feedback).post(insights::add_feedback),
+        )
+        .route(
+            "/feedback/{id}",
+            axum::routing::put(insights::update_feedback).delete(insights::delete_feedback),
+        )
+        .route("/activity", get(insights::activity))
         .route("/vault/lock", post(auth::lock))
         .route("/vault/unlock", post(auth::unlock))
+        .route("/vault/password", post(backup::change_password))
+        .route("/backup/export", post(backup::export))
+        .route("/backup/runs", get(backup::runs))
         .route("/auth/logout", post(auth::logout))
-        .route("/items", get(routes::list).post(routes::create))
+        .route("/items", get(library::list).post(routes::create))
+        .route("/views", get(library::views).post(library::save_view))
+        .route("/views/{id}", axum::routing::delete(library::delete_view))
+        .route("/tags", get(library::tags))
+        .route("/tags/merge", post(library::merge_tags))
+        .route("/projects", get(projects::list).post(projects::create))
+        .route(
+            "/projects/{id}",
+            get(projects::detail).put(projects::update),
+        )
+        .route("/items/batch", post(projects::batch))
+        .route(
+            "/items/{id}/relations",
+            get(projects::relations).post(projects::link),
+        )
+        .route(
+            "/items/{id}/relations/{target}",
+            axum::routing::delete(projects::unlink),
+        )
+        .route(
+            "/items/{id}/state",
+            get(projects::state).put(projects::update_state),
+        )
+        .route("/items/{id}/visit", post(projects::visit))
         .route(
             "/items/{id}",
             get(routes::detail)
@@ -69,6 +137,23 @@ pub fn router(state: AppState) -> Router {
                 .delete(routes::delete),
         )
         .route("/items/{id}/refresh", post(routes::refresh))
+        .route("/items/{id}/versions", get(lifecycle::versions))
+        .route("/items/{id}/export", get(backup::article_zip))
+        .route("/items/{id}/versions/{version}", get(lifecycle::version))
+        .route(
+            "/items/{id}/versions/{version}/restore",
+            post(lifecycle::restore_version),
+        )
+        .route("/trash", get(lifecycle::trash))
+        .route("/trash/{id}/restore", post(lifecycle::restore_item))
+        .route("/trash/{id}", axum::routing::delete(lifecycle::purge))
+        .route("/drafts", get(lifecycle::drafts))
+        .route(
+            "/drafts/{id}",
+            get(lifecycle::draft)
+                .put(lifecycle::save_draft)
+                .delete(lifecycle::delete_draft),
+        )
         .route(
             "/items/{id}/attachments",
             get(routes::attachments).post(routes::upload),
@@ -79,7 +164,30 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/media/{id}", get(routes::media))
         .route("/ingest", post(routes::ingest))
-        .route("/probe", post(routes::probe))
+        .route("/jobs", get(jobs::list).post(jobs::create))
+        .route("/jobs/{id}/cancel", post(jobs::cancel))
+        .route("/jobs/{id}/retry", post(jobs::retry))
+        .route("/jobs/{id}", axum::routing::delete(jobs::delete))
+        .route("/subscriptions", get(subscriptions::all))
+        .route(
+            "/items/{id}/subscription",
+            get(subscriptions::get).put(subscriptions::update),
+        )
+        .route(
+            "/items/{id}/subscription/check",
+            post(subscriptions::request_check),
+        )
+        .route("/items/{id}/subscription/seen", post(subscriptions::seen))
+        .route("/probe", post(api_history::probe))
+        .route("/items/{id}/requests", get(api_history::list))
+        .route(
+            "/items/{id}/requests/{request}",
+            get(api_history::detail).delete(api_history::delete),
+        )
+        .route(
+            "/items/{id}/requests/{request}/cancel",
+            post(api_history::cancel),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::middleware,
@@ -88,6 +196,10 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(auth::status))
         .route("/auth/setup", post(auth::setup))
         .route("/auth/login", post(auth::login))
+        .route(
+            "/backup/restore",
+            post(backup::restore).layer(DefaultBodyLimit::disable()),
+        )
         .merge(protected)
         .fallback(|| async {
             (
@@ -129,6 +241,14 @@ pub fn router(state: AppState) -> Router {
         .layer(SetResponseHeaderLayer::overriding(
             header::X_FRAME_OPTIONS,
             HeaderValue::from_static("DENY"),
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            insights::track,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            lifecycle::maintenance_gate,
         ))
         .with_state(state)
 }

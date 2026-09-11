@@ -7,6 +7,9 @@ import { Markdown } from '../Markdown';
 import { Attachments } from '../Attachments';
 import { SourceLink } from '../SourceLink';
 import { useDraft } from '../../lib/useDraft';
+import { usePersistentDraft } from '../../lib/usePersistentDraft';
+import { DraftNotice } from '../DraftNotice';
+import { RepoSubscription } from '../RepoSubscription';
 export function RepoView({
   item,
   onSaved,
@@ -26,6 +29,19 @@ export function RepoView({
   const { dirty } = draft;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const persistence = usePersistentDraft({
+    scope: `repo:${item.id}`,
+    kind: item.kind,
+    itemId: item.id,
+    revision: item.revision,
+    value: { path, notes },
+    dirty,
+    onRestore: (value) => {
+      setPath(value.path);
+      setNotes(value.notes);
+      draft.change();
+    },
+  });
   const change = () => {
     draft.change();
   };
@@ -38,6 +54,7 @@ export function RepoView({
         { ...item, data: { ...item.data, localWorkspacePath: path, cookbookNotes: notes } },
         item.id,
       );
+      await persistence.clear({ path, notes });
       if (draft.saved(snapshot)) onSaved(updated);
     } catch (e) {
       setError(errorMessage(e));
@@ -54,6 +71,7 @@ export function RepoView({
   }
   return (
     <div className="canvas">
+      <DraftNotice draft={persistence} />
       <div className="content-title">
         <div className="title-tags">
           <span className="badge repo">{item.category}</span>
@@ -81,6 +99,7 @@ export function RepoView({
           {error}
         </div>
       )}
+      <RepoSubscription itemId={item.id} />
       <section className="workspace-card">
         <div className="section-title">
           <h3>

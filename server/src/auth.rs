@@ -95,7 +95,7 @@ async fn throttle(state: &AppState) -> Result<()> {
     Ok(())
 }
 
-async fn verify(state: &AppState, password: String) -> Result<VaultKey> {
+pub(crate) async fn verify(state: &AppState, password: String) -> Result<VaultKey> {
     throttle(state).await?;
     if password.len() > 1024 {
         return Err(AppError::bad("密码过长"));
@@ -111,7 +111,7 @@ async fn verify(state: &AppState, password: String) -> Result<VaultKey> {
     Ok(key)
 }
 
-async fn new_session(state: &AppState, key: VaultKey) -> Json<Value> {
+pub(crate) async fn new_session(state: &AppState, key: VaultKey) -> Json<Value> {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     let token = hex::encode(bytes);

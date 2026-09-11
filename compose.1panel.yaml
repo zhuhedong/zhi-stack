@@ -1,0 +1,37 @@
+# 1Panel: 容器 → 编排 → 创建。Compose 粘贴本文件，环境变量粘贴 docs/deploy-docker.md 中的 1Panel 示例。
+# 使用 1Panel 应用商店的 PostgreSQL 时，把 PGHOST 设成该数据库容器名，并加入 1panel-network。
+services:
+  app:
+    image: ${INFOHUB_IMAGE:-ghcr.io/zhuhedong/zhi-stack:latest}
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      PGHOST: ${PGHOST:?Set PGHOST}
+      PGPORT: ${PGPORT:-5432}
+      PGUSER: ${PGUSER:?Set PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Set PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:-infohub}
+      PGSSLMODE: ${PGSSLMODE:-disable}
+      BIND_ADDR: 0.0.0.0:3210
+      FRONTEND_DIR: /app/dist
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://127.0.0.1:3210,http://tauri.localhost,https://tauri.localhost,tauri://localhost}
+      ALLOWED_PRIVATE_HOSTS: ${ALLOWED_PRIVATE_HOSTS:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      RUST_LOG: ${RUST_LOG:-infohub_server=info}
+      FILE_STORAGE: ${FILE_STORAGE:-local}
+      LOCAL_STORAGE_PATH: /data/files
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+    volumes:
+      - infohub_files:/data/files
+    ports:
+      - '${INFOHUB_BIND_IP:-127.0.0.1}:${INFOHUB_PORT:-3210}:3210'
+    networks:
+      - 1panel-network
+volumes:
+  infohub_files:
+networks:
+  1panel-network:
+    external: true

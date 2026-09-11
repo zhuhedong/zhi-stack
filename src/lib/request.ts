@@ -26,7 +26,54 @@ export function mergeHeaders(global: Pair[], custom: Pair[]) {
   }
   return [...result.values()];
 }
-export function buildRequest(data: ItemData, ep: Endpoint) {
+export function resolveEnvironment(data: ItemData, ep: Endpoint) {
+  const env = data.environments?.find((environment) => environment.id === data.activeEnvironment);
+  if (data.activeEnvironment && !env) throw new Error('当前环境已删除，请重新选择环境');
+  const values = new Map<string, string>();
+  for (const variable of env?.variables || []) {
+    if (!variable.enabled || !variable.key.trim()) continue;
+    const name = variable.key.trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(name))
+      throw new Error('变量名只能包含字母、数字、下划线、点和短横线，且不能以数字开头');
+    if (values.has(name)) throw new Error('环境存在重名变量：' + name);
+    values.set(name, variable.value);
+  }
+  function resolve(text: string, stack: string[] = []): string {
+    return text.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, raw: string) => {
+      const name = raw.trim();
+      if (!values.has(name)) throw new Error('当前环境缺少变量：' + name);
+      if (stack.includes(name) || stack.length >= 20)
+        throw new Error('环境变量存在循环引用：' + [...stack, name].join(' → '));
+      return resolve(values.get(name)!, [...stack, name]);
+    });
+  }
+  const pairs = (rows: Pair[]) =>
+    rows.map((pair) => (pair.enabled ? { ...pair, value: resolve(pair.value) } : pair));
+  const baseUrl = resolve(ep.baseUrl || '').trim() || resolve(data.fields?.baseUrl || '');
+  const path = resolve(ep.path);
+  const pathKeys = new Set([...path.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]));
+  return {
+    data: {
+      ...data,
+      fields: { ...data.fields, baseUrl },
+      globalHeaders: [],
+    },
+    ep: {
+      ...ep,
+      path,
+      baseUrl,
+      customHeaders: pairs(mergeHeaders(data.globalHeaders || [], ep.customHeaders)),
+      queryParams: pairs(ep.queryParams),
+      pathParams: ep.pathParams.map((pair) =>
+        pathKeys.has(pair.key) ? { ...pair, value: resolve(pair.value) } : pair,
+      ),
+      requestBody: ['GET', 'HEAD'].includes(ep.method) ? ep.requestBody : resolve(ep.requestBody),
+    },
+  };
+}
+export type CompiledRequest = ReturnType<typeof buildRequest>;
+export function buildRequest(originalData: ItemData, originalEndpoint: Endpoint) {
+  const { data, ep } = resolveEnvironment(originalData, originalEndpoint);
   if (!ep.path.startsWith('/') || ep.path.includes('\\') || ep.path.includes('#'))
     throw new Error('接口路径必须以 / 开头，不能包含反斜杠或 # 片段');
   const path = ep.path.replace(/\{([^}]+)\}/g, (placeholder, key: string) => {
@@ -57,7 +104,7 @@ export function buildRequest(data: ItemData, ep: Endpoint) {
   };
 }
 export function endpointPath(ep: Endpoint, path: string): Partial<Endpoint> {
-  const keys = [...new Set([...path.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]))];
+  const keys = [...new Set([...path.matchAll(/(?<!\{)\{([^{}]+)\}(?!\})/g)].map((match) => match[1]))];
   return {
     path,
     pathParams: keys.map(

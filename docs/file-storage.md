@@ -36,7 +36,16 @@ FILE_STORAGE=local
 
 ## 可选：Cloudflare R2
 
-创建一个私有 R2 Bucket，并创建限定到该 Bucket 的对象读写凭据。使用 S3 API 的 **Access Key ID / Secret Access Key**，不是 Cloudflare 全局 API Key。端点为账户的 R2 S3 地址；客户端固定使用区域 `auto` 和 AWS SigV4 签名。[Cloudflare R2 Rust 接入说明](https://developers.cloudflare.com/r2/examples/aws/aws-sdk-rust/)、[R2 S3 API 兼容说明](https://developers.cloudflare.com/r2/api/s3/api/)
+创建一个私有 R2 Bucket，并创建限定到该 Bucket 的对象读写凭据。使用 S3 API 的 **Access Key ID / Secret Access Key**，不是 Cloudflare 全局 API Key，也不是「我的个人资料 → API 令牌」里的 Bearer Token。端点为账户的 R2 S3 地址；客户端固定使用区域 `auto` 和 AWS SigV4 签名。[R2 令牌说明](https://developers.cloudflare.com/r2/api/tokens/)、[R2 S3 接入](https://developers.cloudflare.com/r2/get-started/s3/)。
+
+申请步骤：
+
+1. 控制台打开 [R2 Overview](https://dash.cloudflare.com/?to=/:account/r2/overview)。尚未开通 R2 时先购买/启用。
+2. **Create bucket**，名称填到 `R2_BUCKET`（例如 `infohub-files`），保持私有，不必开公开访问或 CORS。
+3. 同一页 **Account details** 旁 **API Tokens → Manage**。
+4. **Create Account API token**（或 User API token）。权限选 **Object Read & Write**，范围选 **Apply to specific buckets only**，只勾选上一步的 Bucket。
+5. 创建成功后立刻复制 **Access Key ID** → `R2_ACCESS_KEY_ID`，**Secret Access Key** → `R2_SECRET_ACCESS_KEY`。Secret 只显示一次。
+6. 确认页或 Overview 上的 S3 端点填到 `R2_ENDPOINT`，格式为 `https://<账户ID>.r2.cloudflarestorage.com`，不要带 Bucket 路径或 `*.r2.dev`。
 
 在服务端 `.env` 或 Docker 的 `.env.external-pg` 填写：
 
@@ -73,15 +82,16 @@ curl -fsS http://127.0.0.1:3210/api/health
 
 文件已存在后，程序会检查存储位置标识：本地标识来自目录里的 `.infohub-storage-id`，R2 标识由端点和 Bucket 生成。完整复制本地目录（含标识文件）后可以修改路径；同一路径挂到新的空磁盘、丢失标识文件或误改 Bucket 会阻止启动。上一版本使用绝对路径哈希的本地存储，会在逐个校验所有被引用文件后自动升级固定标识。更换 R2 密钥而不更换端点/Bucket 不影响文件引用。
 
-当前提供的是 **PG 文件内容到磁盘/R2 的自动迁移**及本地目录整体搬迁；磁盘和 R2 之间切换、跨 Bucket 迁移还没有专用工具，不能只改 `FILE_STORAGE`。磁盘恢复到新主机时可调整绝对路径，但必须恢复完整目录（含隐藏的标识文件）及对应 PG。多个应用实例使用磁盘模式时必须共享同一物理文件存储，不能仅配置相同路径；当前会话仍在单进程内，不提供多实例高可用部署。
+支持 **PG 文件内容到磁盘/R2 的自动迁移**及本地目录整体搬迁。0.2 还可用完整加密备份恢复到配置了其他文件后端的干净实例，恢复时重新分配存储键，步骤见 [运维手册](operations.md)。已有文件的实例不能只改 `FILE_STORAGE` 或 Bucket。使用原始 PG/文件快照搬迁时，仍必须恢复对应的完整目录（含隐藏的标识文件）及 PG。当前会话与工作任务按单服务进程运行，不提供多实例高可用部署。
 
 ## 删除、失败处理与备份
 
 - 上传完成后才创建可下载的附件记录；普通附件保留原始字节，凭证附件先加密再写入磁盘/R2。每个附件最多 10 MiB。
 - 下载和图片读取校验大小及 SHA-256；缺失、损坏或存储不可用返回明确的服务错误。凭证附件在金库锁定时不可访问。
-- 删除附件、删除资产、重抓图片时，在同一 PG 事务内记录文件清理任务，提交后通知专用后台任务删除实际文件，HTTP 返回不等待远程删除。后台允许存储请求完成自身的超时/重试过程，失败保留队列，每分钟及重启后重试。
+- 0.2 删除资产会移入回收站，附件和图片继续保留。同步或编辑前保存的历史版本仍可引用旧图片。明确永久删除、删除附件或清理最后一个历史引用后，无引用文件在同一 PG 事务内进入清理队列；HTTP 不等待远程删除。后台失败保留队列，每分钟及重启后重试。
 - 上传取消、图片批量写入中断或数据库事务回滚留下的未引用文件有一小时保护期，之后由同一队列清理；进程被终止时遗留的本地原子写入临时文件也随对应对象清理。磁盘写入在提交文件引用前显式刷盘。不要在 Bucket 上配置会自动删除仍被使用对象的过期规则。
-- 备份必须同时覆盖完整 PG（含 `file_objects`、金库和迁移记录）以及完整磁盘文件目录或 R2 对象。**只备份 PG 无法恢复附件和图片。** 为保持对应关系，停止应用写入后备份两部分；恢复时也成套恢复。
+- “数据与安全”及维护 CLI 可导出包含业务记录、历史、回收站、附件和图片的加密 `.infohub` 文件，支持恢复校验和密码更换。生成备份时会协调应用写入与后台任务，恢复时撤销旧会话。
+- 如果使用原始数据库快照，必须同时覆盖完整 PG（含 `file_objects`、金库和迁移记录）以及完整磁盘目录或 R2 对象。**只备份 PG 无法恢复外部附件和图片。** 停止应用写入后备份两部分，恢复时成套恢复；`.env` 等机器配置另行保管。
 - Docker 更新使用 `up -d --build`；不要用 `down -v` 清理持久文件卷。R2 由独立 Bucket 持久保存。
 
 ## 验证方式

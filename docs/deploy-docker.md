@@ -145,6 +145,8 @@ infohub.example.com {
 
 ## 6. 升级镜像
 
+0.2 增加了数据库迁移和完整加密备份。先按 [运维手册](operations.md) 做备份与隔离恢复演练，再更新；0.1 首次升级使用停写后的 PG 与文件快照，0.2 及以后可使用维护 CLI 和 `release-ops.mjs`。发布升级使用明确的版本标签或摘要，保留旧镜像及对应快照。以下命令只执行镜像替换，不代替备份，也不提供数据库回退。
+
 ```bash
 cd /opt/infohub
 docker compose pull
@@ -161,7 +163,83 @@ docker compose logs --tail=100 -f app
 
 健康接口应返回 JSON：`initialized`（是否已设主密码）、`database` 为 `PostgreSQL`、以及服务版本。
 
-## 7. 常见问题
+## 7. 用 1Panel 部署时怎么填环境变量
+
+1Panel 的环境变量写在**编排的 `.env`**，不是写在容器内部、也不是系统 `/etc/environment`。Compose 里的 `${POSTGRES_PASSWORD}`、`${PGHOST}` 从这里取值，再注入容器。
+
+### 7.1 面板里填在哪
+
+1. **容器 → 编排 → 创建编排**（或打开已有编排的编辑）。
+2. 编排文件粘贴 [compose.1panel.yaml](../compose.1panel.yaml)（只拉镜像，不在服务器编译）。
+3. 同一页的 **环境变量**（有的版本在编排详情 → 配置 / `.env`）按 `KEY=VALUE` 每行一个填写。
+4. 不要把 `BIND_ADDR`、`FRONTEND_DIR`、`LOCAL_STORAGE_PATH` 改成宿主机路径；镜像里已经固定为 `0.0.0.0:3210`、`/app/dist`、`/data/files`。
+5. 主密码不是环境变量。容器起来后用浏览器打开站点，第一次进入再设置。
+
+私有 GHCR 镜像先在 **容器 → 配置 → 仓库** 添加：
+
+| 项 | 值 |
+| -- | -- |
+| 协议 | `https` |
+| 仓库地址 | `ghcr.io` |
+| 用户名 | GitHub 用户名 |
+| 密码 | 具有 `read:packages` 的 Token |
+
+### 7.2 推荐：1Panel 应用商店 PostgreSQL + InfoHub
+
+在 1Panel **数据库 / 应用商店** 先装 PostgreSQL，创建一个库和用户（例如库名 `infohub`）。到 **容器** 列表复制该 PostgreSQL **容器名**，填到 `PGHOST`。同一台机器上的 1Panel 数据库一般走 Docker 网络，**不要**用 `127.0.0.1` 当 `PGHOST`（那是容器自己）。SSL 用 `disable`。
+
+环境变量示例（把域名、容器名、密码换成你的）：
+
+```dotenv
+INFOHUB_IMAGE=ghcr.io/zhuhedong/zhi-stack:latest
+PGHOST=postgresql
+PGPORT=5432
+PGUSER=infohub
+PGPASSWORD=请改成数据库用户密码
+PGDATABASE=infohub
+PGSSLMODE=disable
+INFOHUB_BIND_IP=127.0.0.1
+INFOHUB_PORT=3210
+ALLOWED_ORIGINS=https://infohub.example.com,http://tauri.localhost,https://tauri.localhost,tauri://localhost
+ALLOWED_PRIVATE_HOSTS=
+GITHUB_TOKEN=
+RUST_LOG=infohub_server=info
+FILE_STORAGE=r2
+R2_ENDPOINT=https://你的账户ID.r2.cloudflarestorage.com
+R2_BUCKET=infohub-files
+R2_ACCESS_KEY_ID=你的AccessKeyID
+R2_SECRET_ACCESS_KEY=你的SecretAccessKey
+```
+
+四个 `R2_*` 都要填实，否则容器不会监听 HTTP。`R2_ENDPOINT` 只填账户 S3 地址，不要带 Bucket 名、路径或 `*.r2.dev` 公共域名。密钥用 R2 的 **S3 Access Key**，不是 Cloudflare 全局 API Token。Bucket 保持私有，不必开公开访问或 CORS。
+
+已经用 `FILE_STORAGE=local` 存过附件后再改成 `r2` 不会自动搬文件，需要空库或按 [文件存储说明](file-storage.md) 处理。全新 1Panel 部署直接用 `r2` 即可。
+
+`ALLOWED_ORIGINS` 必须带协议，不要末尾 `/`。后面再用 1Panel **网站** 反代 `127.0.0.1:3210` 时，把站点实际访问地址写进去。
+
+含空格或 `#` `$` 的密码用单引号包起来：`PGPASSWORD='a#b$c'`。
+
+### 7.3 变量对照
+
+| 填在 1Panel `.env` | 作用 | 不要填成 |
+| ------------------- | ---- | -------- |
+| `INFOHUB_IMAGE` | 拉取的镜像 | 不要留空后再点「构建」 |
+| `PGHOST` | PostgreSQL 容器名或可达主机名 | 不要填 `https://`、端口或 `/api` |
+| `PGPORT` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` | 数据库连接 | `PGPASSWORD` 不是 InfoHub 主密码 |
+| `PGSSLMODE` | 同机 Docker 网用 `disable`；云数据库按供应商要求 | |
+| `INFOHUB_BIND_IP` / `INFOHUB_PORT` | 映射到宿主机、给网站反代用 | 容器内监听地址不用改 |
+| `ALLOWED_ORIGINS` | 浏览器和桌面允许的来源 | 不要只写域名不写 `https://` |
+| `GITHUB_TOKEN` | 采集 GitHub 仓库的可选 Token | 不是 GHCR 登录密码 |
+| `FILE_STORAGE` | `r2` 走 Cloudflare；`local` 走 Docker 卷 | 不要写成 `R2` 或 Bucket 名 |
+| `R2_ENDPOINT` | `https://<账户ID>.r2.cloudflarestorage.com` | 不要加 `/bucket`、查询参数、`r2.dev` |
+| `R2_BUCKET` | 私有 Bucket 名 | 不要填 URL |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | 该 Bucket 的 S3 对象读写密钥 | 不是全局 API Token，也不要放进网站配置 |
+
+网站反代：1Panel **网站 → 创建 → 反向代理**，目标 `http://127.0.0.1:3210`。创建后把 `ALLOWED_ORIGINS` 改成站点 URL 并重建/重启编排。
+
+就绪检查：宿主机执行 `curl -fsS http://127.0.0.1:3210/api/health`，应返回 `"database":"PostgreSQL"`。
+
+## 8. 常见问题
 
 | 现象 | 处理 |
 | ---- | ---- |

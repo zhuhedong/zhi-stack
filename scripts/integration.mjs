@@ -122,7 +122,8 @@ let token = '';
 const base = 'http://127.0.0.1:' + port + '/api';
 async function boot() {
   const executable = resolve(
-    'server/target/debug/infohub-server' + (process.platform === 'win32' ? '.exe' : ''),
+    process.env.INFOHUB_TEST_BINARY ||
+      'server/target/debug/infohub-server' + (process.platform === 'win32' ? '.exe' : ''),
   );
   assert.ok(existsSync(executable), 'Build the server with cargo build --manifest-path server/Cargo.toml');
   server = spawn(executable, [], {
@@ -360,7 +361,8 @@ try {
   assert.equal((await fetch(base + '/media/' + media.id)).status, 401);
   articleVersion = 2;
   const refreshedArticle = await request('/items/' + archived.item.id + '/refresh', 'POST');
-  await removed(media.storage_key);
+  assert.deepEqual(fileRead(media.storage_key), png);
+  assert.ok((await request('/items/' + archived.item.id + '/versions')).length > 0);
   assert.equal('swaggerEndpoints' in refreshedArticle.item.data, false);
   assert.ok(refreshedArticle.item.data.content.includes('2。'));
   assert.equal(
@@ -371,7 +373,7 @@ try {
   await request('/ingest', 'POST', { url: fixtureUrl + '/article' }, 409);
   await request('/ingest', 'POST', { url: 'file:///secret' }, 400);
   await request('/ingest', 'POST', { url: fixtureUrl.replace('127.0.0.1', 'localhost') + '/article' }, 400);
-  pass('real HTML capture, offline image bytes, refresh cleanup, deduplication and SSRF protection');
+  pass('real HTML capture, offline images and retained history, deduplication and SSRF protection');
 
   let apiItem = (
     await request('/ingest', 'POST', { url: fixtureUrl + '/swagger-ui', project: 'InfoHub 验收项目' }, 201)
@@ -459,8 +461,7 @@ try {
   assert.equal(formEcho.headers['content-type'], 'application/x-www-form-urlencoded');
   assert.equal(formEcho.url, '/echo/form?preset=a%2Fb');
   await request('/items/' + formApi.id, 'DELETE', undefined, 204);
-  const autoArticle = (await request('/ingest', 'POST', { url: fixtureUrl + '/article-swagger' }, 201))
-    .item;
+  const autoArticle = (await request('/ingest', 'POST', { url: fixtureUrl + '/article-swagger' }, 201)).item;
   assert.equal(autoArticle.kind, 'knowledge');
   assert.match(autoArticle.data.content, /SwaggerUIBundle/);
   await request('/items/' + autoArticle.id, 'DELETE', undefined, 204);
@@ -589,11 +590,11 @@ try {
     { kind: 'knowledge', title: '   ' },
     { kind: 'knowledge', title: 'x'.repeat(501) },
     { kind: 'knowledge', title: 'bad', url: 'javascript:alert(1)' },
-    { kind: 'knowledge', title: 'bad', tags: Array(51).fill('tag') },
+    { kind: 'knowledge', title: 'bad', tags: Array.from({ length: 51 }, (_, index) => 'tag-' + index) },
   ])
     await request('/items', 'POST', invalid, 400);
   await request('/items/' + article.id, 'PUT', { ...article, revision: undefined }, 400);
-  await request('/items/' + article.id, 'PUT', { ...article, kind: 'repo' }, 409);
+  await request('/items/' + article.id, 'PUT', { ...article, kind: 'repo' }, 400);
   await request('/items/' + repo.id + '/refresh', 'POST', undefined, 400);
   await request('/items?q=' + 'a'.repeat(501), 'GET', undefined, 400);
   pass('invalid types, empty/oversized titles, unsafe URLs, missing revisions and absent sync sources');
@@ -702,6 +703,8 @@ try {
   await request('/items/' + fileItem.id + '/attachments', 'POST', oversized, 400);
   assert.equal((await request('/items/' + fileItem.id + '/attachments')).length, 1);
   await request('/items/' + fileItem.id, 'DELETE', undefined, 204);
+  assert.ok(fileExists('attachments/' + largeFile.id));
+  await request('/trash/' + fileItem.id, 'DELETE', { confirm: '永久删除' }, 204);
   await removed('attachments/' + largeFile.id);
   await request('/attachments/' + largeFile.id, 'GET', undefined, 404);
   assert.equal(
@@ -715,6 +718,8 @@ try {
   const disposableMedia = (await db.query('SELECT id FROM media WHERE item_id=$1', [disposable.item.id]))
     .rows[0].id;
   await request('/items/' + disposable.item.id, 'DELETE', undefined, 204);
+  assert.ok(fileExists('media/' + disposableMedia));
+  await request('/trash/' + disposable.item.id, 'DELETE', { confirm: '永久删除' }, 204);
   await removed('media/' + disposableMedia);
   await request('/media/' + disposableMedia, 'GET', undefined, 404);
   assert.equal(

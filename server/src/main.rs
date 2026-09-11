@@ -36,7 +36,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let storage = FileStorage::from_env().await?;
     sqlx::migrate!().run(&db).await?;
     files::initialize(&db, &storage).await?;
+    sqlx::query("UPDATE backup_runs SET status='interrupted',message='服务中断，请重新执行并核对备份文件',finished_at=now() WHERE status='running'").execute(&db).await?;
+    sqlx::query(
+        "UPDATE api_history SET status='interrupted',finished_at=now() WHERE status='running'",
+    )
+    .execute(&db)
+    .await?;
     let state = AppState::new(db, storage);
+    infohub_server::jobs::initialize(&state).await?;
+    infohub_server::subscriptions::initialize(&state).await?;
     let address = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3210".into());
     let listener = tokio::net::TcpListener::bind(&address).await?;
     tracing::info!(%address, "InfoHub connected to PostgreSQL; server ready");
@@ -48,13 +56,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ = interval.tick() => {},
                 _ = cleanup_state.file_cleanup.notified() => {},
             }
+            let _guard = cleanup_state.maintenance.read().await;
             files::cleanup(&cleanup_state.db, &cleanup_state.storage).await;
+            if sqlx::query("DELETE FROM usage_events WHERE created_at < now()-interval '180 days'")
+                .execute(&cleanup_state.db)
+                .await
+                .is_err()
+            {
+                tracing::warn!("expired local usage events could not be removed");
+            }
         }
     });
+    let jobs_worker = tokio::spawn(infohub_server::jobs::worker(state.clone()));
+    let subscriptions_worker = tokio::spawn(infohub_server::subscriptions::worker(state.clone()));
     let result = axum::serve(listener, router(state))
         .with_graceful_shutdown(shutdown_signal())
         .await;
     cleanup_worker.abort();
+    jobs_worker.abort();
+    subscriptions_worker.abort();
     result?;
     Ok(())
 }

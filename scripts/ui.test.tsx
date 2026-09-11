@@ -9,6 +9,7 @@ import { AuthScreen } from '../src/components/AuthScreen';
 import { ItemEditor } from '../src/components/ItemEditor';
 import { IngestModal } from '../src/components/IngestModal';
 import { RepoView } from '../src/components/views/RepoView';
+import { VersionHistory } from '../src/components/VersionHistory';
 import { Attachments } from '../src/components/Attachments';
 import { Markdown, archivedMediaPath } from '../src/components/Markdown';
 import { emptyEndpoint } from '../src/lib/request';
@@ -260,6 +261,49 @@ test('an in-flight probe superseded by switching endpoints re-enables Send', asy
   expect(host.textContent).not.toContain('stale-after-switch');
 });
 
+test('manual cancellation aborts the fetch and ignores a late response', async () => {
+  const pending = deferred<unknown>();
+  mocks.api.mockImplementation(async (path: string) => (path === '/probe' ? pending.promise : undefined));
+  await render(
+    <ApiWorkbench item={item('credential')} onSaved={vi.fn()} onDirty={vi.fn()} notify={vi.fn()} />,
+  );
+  await click('发送请求');
+  const sent = mocks.api.mock.calls.find(([path]) => path === '/probe')!;
+  const body = JSON.parse(sent[1].body);
+  await click('取消请求');
+  expect(sent[1].signal.aborted).toBe(true);
+  expect(mocks.api).toHaveBeenCalledWith(
+    `/items/credential/requests/${body.requestId}/cancel`,
+    expect.objectContaining({ method: 'POST' }),
+  );
+  await act(async () =>
+    pending.resolve({ status: 200, body: 'cancelled-late-body', headers: {}, size: 19, durationMs: 1 }),
+  );
+  expect(host.textContent).not.toContain('cancelled-late-body');
+  expect(button('发送请求').disabled).toBe(false);
+});
+
+test('the selected environment is visible and its values reach requests without changing saved templates', async () => {
+  const current = item('credential');
+  current.data.fields = { baseUrl: '{{base}}' };
+  current.data.environments = [
+    {
+      id: 'dev',
+      name: '开发环境',
+      variables: [{ key: 'base', value: 'https://dev.example/v1', enabled: true }],
+    },
+  ];
+  current.data.activeEnvironment = 'dev';
+  mocks.api.mockResolvedValue({ status: 200, body: 'ok', headers: {}, size: 2, durationMs: 1 });
+  await render(<ApiWorkbench item={current} onSaved={vi.fn()} onDirty={vi.fn()} notify={vi.fn()} />);
+  expect(input('当前环境').value).toBe('dev');
+  await click('发送请求');
+  const sent = JSON.parse(mocks.api.mock.calls.find(([path]) => path === '/probe')![1].body);
+  expect(sent.url).toBe('https://dev.example/v1/first');
+  expect(sent.environment).toBe('开发环境');
+  expect(current.data.fields.baseUrl).toBe('{{base}}');
+});
+
 test('binary response download preserves every original byte', async () => {
   mocks.api.mockResolvedValue({
     status: 200,
@@ -357,7 +401,7 @@ test('new-item cancel and ingest cancel keep entered content when discard is dec
   await click('取消');
   expect(close).not.toHaveBeenCalled();
   await render(
-    <IngestModal initialUrl="https://example.com" onDraft={vi.fn()} onClose={close} onSaved={vi.fn()} />,
+    <IngestModal initialUrl="https://example.com" onDraft={vi.fn()} onClose={close} onQueued={vi.fn()} />,
   );
   await click('取消');
   expect(close).not.toHaveBeenCalled();
@@ -458,9 +502,11 @@ test('list item context menu copies the source URL and favorites via a full item
   await submit();
   await click('知识与文章1');
   await act(async () =>
-    host.querySelector('.list-item')!.dispatchEvent(
-      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 80 }),
-    ),
+    host
+      .querySelector('.list-item')!
+      .dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 80 }),
+      ),
   );
   expect(document.querySelector('[role=menu]')?.textContent).toContain('复制链接');
   expect(document.querySelector('[role=menu]')?.textContent).toContain('重新同步');
@@ -473,9 +519,11 @@ test('list item context menu copies the source URL and favorites via a full item
   expect(mocks.copyText).toHaveBeenCalledWith('https://example.com/articles/start');
   expect(document.querySelector('[role=menu]')).toBeNull();
   await act(async () =>
-    host.querySelector('.list-item')!.dispatchEvent(
-      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 80 }),
-    ),
+    host
+      .querySelector('.list-item')!
+      .dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 80 }),
+      ),
   );
   mocks.saveItem.mockResolvedValue({ ...item(), favorite: true, revision: 2 });
   await act(async () =>
@@ -493,9 +541,11 @@ test('locked credential context menu offers unlock instead of destructive action
   await submit();
   await act(async () => window.dispatchEvent(new Event('infohub:locked')));
   await act(async () =>
-    host.querySelector('.list-item')!.dispatchEvent(
-      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 40 }),
-    ),
+    host
+      .querySelector('.list-item')!
+      .dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 40 }),
+      ),
   );
   const menu = document.querySelector('[role=menu]')?.textContent || '';
   expect(menu).toContain('解锁密码库');
@@ -616,14 +666,15 @@ test('ingestion sends selected type, project and tags and cannot close during co
       initialUrl="https://example.com/article"
       onDraft={vi.fn()}
       onClose={close}
-      onSaved={saved}
+      onQueued={saved}
     />,
   );
   await fill(host.querySelector('select')!, 'knowledge');
   await fill(input('所属项目'), '验收项目');
   await fill(input('标签'), 'Rust，PG');
   await submit();
-  expect(JSON.parse(mocks.api.mock.lastCall![1].body)).toEqual({
+  expect(JSON.parse(mocks.api.mock.calls.find(([path]) => path === '/jobs')![1].body)).toEqual({
+    requestId: expect.any(String),
     url: 'https://example.com/article',
     kind: 'knowledge',
     project: '验收项目',
@@ -632,8 +683,8 @@ test('ingestion sends selected type, project and tags and cannot close during co
   expect(button('取消').disabled).toBe(true);
   await click('关闭对话框');
   expect(close).not.toHaveBeenCalled();
-  await act(async () => pending.resolve({ item: item(), warnings: ['一张图片未保存'] }));
-  expect(saved).toHaveBeenCalledWith(item(), ['一张图片未保存']);
+  await act(async () => pending.resolve({ id: 'queued-job' }));
+  expect(saved).toHaveBeenCalledWith('queued-job');
 });
 
 test('Ctrl+F selects global search and pasting a URL opens the ingestion form', async () => {
@@ -770,7 +821,7 @@ test('locked vault cannot start OpenAPI ingest without unlock', async () => {
   expect(host.querySelector<HTMLOptionElement>('option[value="credential"]')?.disabled).toBe(true);
   await fill(input('内容类型'), 'credential');
   await fill(input('目标 URL'), 'https://example.com/openapi.json');
-  const ingestCalls = () => mocks.api.mock.calls.filter(([path]) => path === '/ingest').length;
+  const ingestCalls = () => mocks.api.mock.calls.filter(([path]) => path === '/jobs').length;
   const before = ingestCalls();
   await submit();
   expect(ingestCalls()).toBe(before);
@@ -886,11 +937,15 @@ test('attachment upload started on one item does not appear after switching item
     configurable: true,
   });
   await act(async () => upload.dispatchEvent(new Event('change', { bubbles: true })));
-  const post = mocks.api.mock.calls.find(([path, options]) => path === '/items/article-id/attachments' && options?.method === 'POST');
+  const post = mocks.api.mock.calls.find(
+    ([path, options]) => path === '/items/article-id/attachments' && options?.method === 'POST',
+  );
   expect(post).toBeTruthy();
   await render(<Attachments id="other-id" />);
   expect(post![1].signal.aborted).toBe(true);
-  await act(async () => pending.resolve({ id: 'file-id', name: '接口说明.txt', mime: 'text/plain', size: 4 }));
+  await act(async () =>
+    pending.resolve({ id: 'file-id', name: '接口说明.txt', mime: 'text/plain', size: 4 }),
+  );
   expect(host.querySelector('.file-row')).toBeNull();
 });
 
@@ -907,9 +962,7 @@ test('saving an existing item title does not reset favorite search or category',
   await fill(input('文章标题'), '改过的标题');
   await submit();
   expect(
-    [...host.querySelectorAll('.dimension-item.active')].some((el) =>
-      el.textContent?.includes('加星收藏'),
-    ),
+    [...host.querySelectorAll('.dimension-item.active')].some((el) => el.textContent?.includes('加星收藏')),
   ).toBe(true);
   expect(host.querySelector('.list-filter .selected')?.textContent).toContain('个人笔记');
 });
@@ -926,6 +979,7 @@ test('archived media URLs must be a media UUID and cannot traverse to other APIs
 });
 
 test('a failed refresh uses an error toast instead of the success style', async () => {
+  vi.mocked(window.confirm).mockReturnValue(true);
   await render(<App />);
   await fill(input('主密码'), 'test-password');
   await submit();
@@ -942,6 +996,120 @@ test('a failed refresh uses an error toast instead of the success style', async 
   expect(toast?.getAttribute('role')).toBe('alert');
   expect(toast?.className).toContain('toast-error');
   expect(toast?.querySelector('svg.lucide-circle-alert, .toast-error svg')).not.toBeNull();
+});
+
+test('article recovery is explicit and saving uses the recovered text', async () => {
+  localStorage.clear();
+  const fallback = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation(async (path: string, options?: RequestInit) => {
+    if (path.startsWith('/drafts/') && !options?.method)
+      return {
+        generation: 3,
+        baseRevision: 1,
+        updatedAt: new Date().toISOString(),
+        payload: { text: '崩溃前写好的内容', mode: 'markdown' },
+      };
+    return fallback(path, options);
+  });
+  await render(<KnowledgeView item={item()} onSaved={vi.fn()} onDirty={vi.fn()} />);
+  expect(host.textContent).toContain('发现上次未保存的草稿');
+  expect(host.textContent).not.toContain('崩溃前写好的内容');
+  await click('恢复草稿');
+  expect(input('Markdown 正文').value).toBe('崩溃前写好的内容');
+  await click('保存修改');
+  expect(mocks.saveItem.mock.calls[0][0].data.content).toBe('崩溃前写好的内容');
+  expect(
+    mocks.api.mock.calls.some(
+      ([path, options]) => path.includes('generation=3') && options?.method === 'DELETE',
+    ),
+  ).toBe(true);
+});
+
+test('credential draft autosave uses the server and never writes secrets to localStorage', async () => {
+  localStorage.clear();
+  const fallback = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation(async (path: string, options?: RequestInit) => {
+    if (path.startsWith('/drafts/')) {
+      if (options?.method === 'PUT') return { generation: 1 };
+      throw Object.assign(new Error('missing'), { status: 404 });
+    }
+    return fallback(path, options);
+  });
+  await render(
+    <ItemEditor
+      pillar="credential"
+      unlocked
+      projects={[]}
+      onDraft={vi.fn()}
+      onClose={vi.fn()}
+      onSaved={vi.fn()}
+    />,
+  );
+  await fill(input('资产名称'), 'private-draft-marker');
+  await act(async () => {
+    await new Promise((done) => setTimeout(done, 650));
+  });
+  const save = mocks.api.mock.calls.find(
+    ([path, options]) => path.startsWith('/drafts/') && options?.method === 'PUT',
+  );
+  expect(save).toBeDefined();
+  expect(JSON.parse(save![1].body).kind).toBe('credential');
+  expect(
+    Object.keys(localStorage).some((key) => localStorage.getItem(key)?.includes('private-draft-marker')),
+  ).toBe(false);
+});
+
+test('an article draft has a local fallback when the server cannot save it', async () => {
+  localStorage.clear();
+  const fallback = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation(async (path: string, options?: RequestInit) => {
+    if (path.startsWith('/drafts/')) throw Object.assign(new Error('offline'), { status: 0 });
+    return fallback(path, options);
+  });
+  await render(<KnowledgeView item={item()} onSaved={vi.fn()} onDirty={vi.fn()} />);
+  await click('Markdown');
+  await fill(input('Markdown 正文'), 'offline-article-draft');
+  expect(
+    Object.keys(localStorage).some(
+      (key) =>
+        key.startsWith('infohub:draft:') && localStorage.getItem(key)?.includes('offline-article-draft'),
+    ),
+  ).toBe(true);
+  localStorage.clear();
+});
+
+test('history preview restores only with the current revision and explicit confirmation', async () => {
+  const restored = vi.fn();
+  mocks.api.mockImplementation(async (path: string, options?: RequestInit) => {
+    if (path.endsWith('/versions'))
+      return [{ id: 'version-a', revision: 1, reason: 'sync', createdAt: '2026-09-11T01:00:00Z' }];
+    if (options?.method === 'POST') return { ...item(), revision: 3 };
+    return { ...item(), data: { content: '历史正文' } };
+  });
+  await render(<VersionHistory item={{ ...item(), revision: 2 }} onClose={vi.fn()} onRestored={restored} />);
+  await act(async () => host.querySelector<HTMLButtonElement>('.version-list button')!.click());
+  expect(host.textContent).toContain('历史正文');
+  await click('恢复到此版本');
+  expect(restored).not.toHaveBeenCalled();
+  vi.mocked(window.confirm).mockReturnValue(true);
+  await click('恢复到此版本');
+  expect(mocks.api).toHaveBeenLastCalledWith('/items/knowledge/versions/version-a/restore', {
+    method: 'POST',
+    body: JSON.stringify({ revision: 2 }),
+  });
+  expect(restored).toHaveBeenCalledWith(expect.objectContaining({ revision: 3 }));
+});
+
+test('declining article sync does not contact the source', async () => {
+  localStorage.clear();
+  await render(<App />);
+  await fill(input('主密码'), 'test-password');
+  await submit();
+  await click('知识与文章1');
+  await act(async () => host.querySelector<HTMLButtonElement>('.list-item')!.click());
+  await click('重新同步');
+  expect(mocks.api.mock.calls.some(([path]) => path.endsWith('/refresh'))).toBe(false);
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('版本历史'));
 });
 
 test('switching asset kind does not keep the previous filter rows', async () => {
@@ -1046,7 +1214,11 @@ test('markdown fragment links stay in-page', async () => {
 });
 
 test('article body can be saved from the reading view and stores the chosen mode', async () => {
-  mocks.saveItem.mockResolvedValue({ ...item(), revision: 2, data: { content: 'from reading', readerMode: 'flow' } });
+  mocks.saveItem.mockResolvedValue({
+    ...item(),
+    revision: 2,
+    data: { content: 'from reading', readerMode: 'flow' },
+  });
   await render(<KnowledgeView item={item()} onSaved={vi.fn()} onDirty={vi.fn()} />);
   await click('Markdown');
   await fill(input('Markdown 正文'), 'from reading');

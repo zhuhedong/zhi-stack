@@ -184,7 +184,11 @@ pub(crate) fn swagger_discovery_required(kind: &str) -> bool {
     kind == "credential"
 }
 
-pub(crate) fn swagger_spec_candidates(page: &url::Url, html: &str, include_well_known: bool) -> Vec<String> {
+pub(crate) fn swagger_spec_candidates(
+    page: &url::Url,
+    html: &str,
+    include_well_known: bool,
+) -> Vec<String> {
     let pattern = regex::Regex::new(r#"(?:url|configUrl)\s*:\s*["']([^"']+)["']"#).unwrap();
     let mut ranked = Vec::new();
     let mut push = |candidate: url::Url| {
@@ -445,7 +449,10 @@ async fn github(state: &AppState, url: &str) -> Result<Collected> {
         return Err(AppError::bad("GitHub 仓库地址无效"));
     }
     let name = format!("{}/{}", parts[0], parts[1].trim_end_matches(".git"));
-    let api = format!("https://api.github.com/repos/{name}");
+    let api = format!(
+        "{}/repos/{name}",
+        state.github_api_base.trim_end_matches('/')
+    );
     let mut headers = HeaderMap::new();
     headers.insert(
         ACCEPT,
@@ -537,6 +544,7 @@ fn repository_input(
         })
         .unwrap_or_default();
     let mut data = json!({"owner":owner, "repoName":repo_name, "stars": repo["stargazers_count"], "forks":repo["forks_count"], "watchers":repo["subscribers_count"], "license":repo["license"]["spdx_id"], "defaultBranch":repo["default_branch"], "localWorkspacePath":"", "cookbookNotes":""});
+    data["pushedAt"] = repo["pushed_at"].clone();
     if let Some(release) = release {
         for (field, source) in [
             ("latestRelease", "tag_name"),
@@ -1165,11 +1173,8 @@ mod tests {
             .position(|url| url.contains("dummy1.json"))
             .unwrap_or(usize::MAX);
         assert!(dummy_index > 0);
-        let mention = swagger_spec_candidates(
-            &page,
-            "这篇文章讨论 SwaggerUIBundle 的使用方式",
-            false,
-        );
+        let mention =
+            swagger_spec_candidates(&page, "这篇文章讨论 SwaggerUIBundle 的使用方式", false);
         assert!(mention.is_empty());
     }
     #[test]

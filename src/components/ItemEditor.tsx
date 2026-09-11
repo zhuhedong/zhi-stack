@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle, Plus, Trash2 } from 'lucide-react';
+import { usePersistentDraft } from '../lib/usePersistentDraft';
+import { DraftNotice } from './DraftNotice';
 import { Modal } from './Modal';
 import { categories, pillarNames, type Item, type ItemInput, type Pillar } from '../types';
 import { errorMessage, saveItem } from '../lib/api';
@@ -93,6 +95,20 @@ export function ItemEditor({
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [customKey, setCustomKey] = useState('');
+  const persistence = usePersistentDraft({
+    scope: `editor:${item?.id || 'new'}`,
+    kind: form.kind,
+    itemId: item?.id,
+    revision: item?.revision,
+    value: { form, tagText, customKey },
+    dirty,
+    onRestore: (value) => {
+      setForm({ ...value.form, revision: item?.revision });
+      setTagText(value.tagText);
+      setCustomKey(value.customKey || '');
+      setDirty(true);
+    },
+  });
   const kindDrafts = useRef<Partial<Record<Pillar, Pick<ItemInput, 'category' | 'data'>>>>({});
   const protocolDrafts = useRef<Record<string, ItemInput['data']>>({});
   useEffect(() => {
@@ -136,6 +152,7 @@ export function ItemEditor({
         },
         item?.id,
       );
+      await persistence.clear({ form, tagText, customKey });
       if (active.current) onSaved(saved);
     } catch (error) {
       setError(errorMessage(error));
@@ -148,6 +165,7 @@ export function ItemEditor({
       <form onSubmit={submit}>
         <fieldset className="form-fields" disabled={busy}>
           <div className="modal-body">
+            <DraftNotice draft={persistence} />
             <div className="form-grid">
               <label>
                 资产类型

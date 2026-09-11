@@ -21,6 +21,7 @@ export function Header({
   onLogout,
   onMenu,
   onServerSettings,
+  onManage,
 }: {
   unlocked: boolean;
   busy: boolean;
@@ -31,6 +32,7 @@ export function Header({
   onLogout: () => void;
   onMenu: () => void;
   onServerSettings: () => void;
+  onManage: () => void;
 }) {
   return (
     <header className="app-header">
@@ -59,6 +61,15 @@ export function Header({
         </button>
       </div>
       <div className="header-actions">
+        <button
+          className="icon-button"
+          aria-label="数据与安全"
+          title="数据与安全"
+          disabled={busy}
+          onClick={onManage}
+        >
+          <Database size={14} />
+        </button>
         {isDesktop && (
           <button
             className="icon-button"

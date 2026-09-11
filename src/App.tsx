@@ -1,10 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Check, CircleAlert, LoaderCircle, LockKeyhole, X } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { ListPanel } from './components/ListPanel';
 import { Workspace } from './components/Workspace';
 import { AuthScreen } from './components/AuthScreen';
+import { DataManager } from './components/DataManager';
+import { VersionHistory } from './components/VersionHistory';
+import { ProjectHub } from './components/ProjectHub';
+import { OrganizePanel, type SavedFilter } from './components/OrganizePanel';
+import { TaskCenter } from './components/TaskCenter';
+import { GettingStarted } from './components/GettingStarted';
 import { ItemEditor } from './components/ItemEditor';
 import { IngestModal } from './components/IngestModal';
 import { Modal } from './components/Modal';
@@ -14,6 +20,9 @@ import { openSource } from './components/SourceLink';
 import { isDesktop } from './lib/platform';
 import { api, copyText, errorMessage, saveItem, setToken } from './lib/api';
 import type { Item, ListResult, Pillar } from './types';
+const InsightsPanel = lazy(() =>
+  import('./components/InsightsPanel').then((module) => ({ default: module.InsightsPanel })),
+);
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false);
@@ -28,6 +37,11 @@ function App() {
   const [dimension, setDimension] = useState('all');
   const [global, setGlobal] = useState(false);
   const [favorite, setFavorite] = useState(false);
+  const [view, setView] = useState('all');
+  const [sort, setSort] = useState('relevance');
+  const [scopeProject, setScopeProject] = useState<string | undefined>(undefined);
+  const [tagFilter, setTagFilter] = useState<string | undefined>(undefined);
+  const [batchIds, setBatchIds] = useState<string[]>([]);
   const [result, setResult] = useState<ListResult>({ items: [], total: 0, dimensions: [], unlocked: true });
   const [limit, setLimit] = useState(100);
   const [listLoading, setListLoading] = useState(false);
@@ -37,8 +51,24 @@ function App() {
   const [tick, setTick] = useState(0);
   const [detailTick, setDetailTick] = useState(0);
   const [viewEpoch, setViewEpoch] = useState(0);
+  const [guideTick, setGuideTick] = useState(0);
+  const [activity, setActivity] = useState({ active: 0, completed: 0, unread: 0 });
+  const completedRef = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [modal, setModal] = useState<'add' | 'edit' | 'ingest' | 'unlock' | 'delete' | null>(null);
+  const [modal, setModal] = useState<
+    | 'add'
+    | 'edit'
+    | 'ingest'
+    | 'unlock'
+    | 'delete'
+    | 'data'
+    | 'history'
+    | 'projects'
+    | 'organize'
+    | 'tasks'
+    | 'insights'
+    | null
+  >(null);
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Item | null>(null);
@@ -96,6 +126,15 @@ function App() {
       dirtyRef.current = false;
     }
     setContextMenu(null);
+    setModal((value) =>
+      value === 'data' ||
+      value === 'history' ||
+      value === 'organize' ||
+      value === 'tasks' ||
+      value === 'insights'
+        ? null
+        : value,
+    );
   }, []);
   useEffect(() => {
     const timer = setTimeout(() => setSearch(query), 220);
@@ -220,10 +259,21 @@ function App() {
   useEffect(() => {
     if (!authenticated) return;
     const abort = new AbortController();
-    const scope = [pillar, category, dimension, String(global), String(favorite), search].join('\0');
+    const scope = [
+      pillar,
+      category,
+      dimension,
+      String(global),
+      String(favorite),
+      search,
+      view,
+      sort,
+      scopeProject,
+      tagFilter,
+    ].join('\0');
     const scopeChanged = listScopeRef.current !== scope;
     listScopeRef.current = scope;
-    const params = new URLSearchParams({ limit: '100', q: search });
+    const params = new URLSearchParams({ limit: '100', q: search, view, sort });
     if (!global) {
       params.set('kind', pillar);
       if (pillar === 'credential') {
@@ -233,6 +283,8 @@ function App() {
         params.set('category', category !== 'all' ? category : dimension);
     }
     if (favorite) params.set('favorite', 'true');
+    if (scopeProject !== undefined) params.set('project', scopeProject);
+    if (tagFilter !== undefined) params.set('tag', tagFilter);
     async function load() {
       setListLoading(true);
       setListError('');
@@ -260,8 +312,50 @@ function App() {
     }
     void load();
     return () => abort.abort();
-  }, [authenticated, pillar, category, dimension, global, favorite, search, limit, tick, unlocked, lockUi]);
+  }, [
+    authenticated,
+    pillar,
+    category,
+    dimension,
+    global,
+    favorite,
+    search,
+    view,
+    sort,
+    scopeProject,
+    tagFilter,
+    limit,
+    tick,
+    unlocked,
+    lockUi,
+  ]);
   const canReadSelected = selected?.kind !== 'credential' || unlocked;
+  useEffect(() => {
+    if (!authenticated) return;
+    const abort = new AbortController();
+    async function poll() {
+      try {
+        const value = await api<{ active: number; completed: number; unread: number }>('/activity', {
+          signal: abort.signal,
+        });
+        if (abort.signal.aborted || typeof value.completed !== 'number') return;
+        setActivity(value);
+        if (completedRef.current !== null && completedRef.current !== value.completed) setTick((v) => v + 1);
+        completedRef.current = value.completed;
+      } catch {
+        /* A visible list or task view exposes connection errors. */
+      }
+    }
+    void poll();
+    const timer = setInterval(() => {
+      if (!document.hidden) void poll();
+    }, 30000);
+    return () => {
+      abort.abort();
+      clearInterval(timer);
+      completedRef.current = null;
+    };
+  }, [authenticated]);
   useEffect(() => {
     const abort = new AbortController();
     async function load() {
@@ -285,11 +379,14 @@ function App() {
     void load();
     return () => abort.abort();
   }, [authenticated, selected, canReadSelected, detailTick]);
-  const selectItem = (next: Item) => {
+  const selectItem = (next: Pick<Item, 'id' | 'kind'>) => {
     if (selected?.id !== next.id && !mayLeave()) return;
     if (selected?.id !== next.id) {
       clearDraft();
       setSelected({ id: next.id, kind: next.kind });
+      void api(`/items/${next.id}/visit`, { method: 'POST' })
+        .then(() => setGuideTick((v) => v + 1))
+        .catch(() => {});
     } else if (detailError) {
       setDetailTick((v) => v + 1);
     }
@@ -306,6 +403,9 @@ function App() {
     setQuery('');
     setGlobal(false);
     setFavorite(false);
+    setView('all');
+    setScopeProject(undefined);
+    setTagFilter(undefined);
     setLimit(100);
     setSidebarOpen(false);
     setMobileDetail(false);
@@ -387,6 +487,9 @@ function App() {
     setQuery('');
     setGlobal(false);
     setFavorite(false);
+    setView('all');
+    setScopeProject(undefined);
+    setTagFilter(undefined);
     setSelected({ id: updated.id, kind: updated.kind });
     setMobileDetail(true);
     setViewEpoch((v) => v + 1);
@@ -427,6 +530,13 @@ function App() {
   }
   async function refreshEntry(entry: Item) {
     if (selected?.id !== entry.id && !mayLeave()) return;
+    if (
+      entry.kind === 'knowledge' &&
+      !window.confirm(
+        '重新同步会更新已保存的正文和图片。当前内容将保留在“版本历史”中，可随时恢复。继续同步？',
+      )
+    )
+      return;
     setBusy(true);
     try {
       const result = await api<{ item: Item; warnings: string[] }>('/items/' + entry.id + '/refresh', {
@@ -604,6 +714,9 @@ function App() {
   return (
     <AppFrame showDetail={mobileDetail}>
       <Header
+        onManage={() => {
+          if (mayLeave()) showModal('data');
+        }}
         unlocked={unlocked}
         busy={busy}
         onIngest={ingest}
@@ -614,8 +727,32 @@ function App() {
         onServerSettings={() => void logout(true)}
         onMenu={() => setSidebarOpen((v) => !v)}
       />
+      <GettingStarted
+        tick={tick + guideTick}
+        onIngest={ingest}
+        onProjects={() => {
+          if (mayLeave()) showModal('projects');
+        }}
+        onSearch={focusSearch}
+      />
       <div className="app-body">
         <Sidebar
+          onTasks={() => {
+            if (mayLeave()) showModal('tasks');
+          }}
+          onInsights={() => {
+            if (mayLeave()) showModal('insights');
+          }}
+          taskCount={activity.active + activity.unread}
+          onProjects={() => {
+            if (mayLeave()) showModal('projects');
+          }}
+          onOrganize={() => {
+            if (mayLeave()) {
+              setBatchIds([]);
+              showModal('organize');
+            }
+          }}
           pillar={pillar}
           dimensions={result.dimensions}
           dimension={dimension}
@@ -633,6 +770,32 @@ function App() {
           onClose={() => setSidebarOpen(false)}
         />
         <ListPanel
+          view={view}
+          sort={sort}
+          onView={(value) => {
+            setView(value);
+            setLimit(100);
+          }}
+          onSort={(value) => {
+            setSort(value);
+            setLimit(100);
+          }}
+          onOrganize={(ids) => {
+            if (mayLeave()) {
+              setBatchIds(ids);
+              showModal('organize');
+            }
+          }}
+          filterSummary={[
+            scopeProject !== undefined ? `项目：${scopeProject || '未归属'}` : '',
+            tagFilter ? `标签：${tagFilter}` : '',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+          onClearFilters={() => {
+            setScopeProject(undefined);
+            setTagFilter(undefined);
+          }}
           pillar={pillar}
           items={result.items}
           total={result.total}
@@ -660,6 +823,10 @@ function App() {
           onMenu={openListMenu}
         />
         <Workspace
+          onOpen={selectItem}
+          onHistory={() => {
+            if (mayLeave()) showModal('history');
+          }}
           item={item}
           selectedKind={selected?.kind}
           loading={detailLoading}
@@ -701,14 +868,154 @@ function App() {
           onSaved={modal === 'edit' ? edited : created}
         />
       )}
+      {modal === 'data' && (
+        <DataManager
+          onClose={() => setModal(null)}
+          onChanged={reload}
+          onRestored={() => {
+            setModal(null);
+            setToken('');
+            setAuthenticated(false);
+            setItem(null);
+            setSelected(null);
+            clearDraft();
+            notify('恢复完成，请使用备份时的主密码登录。');
+          }}
+        />
+      )}
+      {modal === 'history' && item && (
+        <VersionHistory
+          item={item}
+          onClose={() => setModal(null)}
+          onRestored={(updated) => {
+            setModal(null);
+            saved(updated);
+            clearDraft();
+            setViewEpoch((v) => v + 1);
+            notify('已恢复历史版本，恢复前的内容也已保留。');
+          }}
+        />
+      )}
+      {modal === 'projects' && (
+        <ProjectHub
+          onClose={() => setModal(null)}
+          onChanged={() => {
+            clearDraft();
+            reload();
+            setDetailTick((v) => v + 1);
+          }}
+          onOpen={(entry) => {
+            clearDraft();
+            setGlobal(true);
+            setScopeProject(entry.project);
+            setQuery('');
+            setCategory('all');
+            setDimension('all');
+            setView('all');
+            setTagFilter(undefined);
+            setFavorite(false);
+            setLimit(100);
+            selectItem(entry);
+            setModal(null);
+          }}
+        />
+      )}
+      {modal === 'organize' && (
+        <OrganizePanel
+          ids={batchIds}
+          filters={{
+            kind: global ? undefined : pillar,
+            q: query,
+            category: global
+              ? undefined
+              : category !== 'all'
+                ? category
+                : pillar !== 'credential' && dimension !== 'all'
+                  ? dimension
+                  : undefined,
+            project:
+              scopeProject ??
+              (!global && pillar === 'credential' && dimension !== 'all' ? dimension : undefined),
+            favorite: favorite || undefined,
+            view,
+            sort,
+            tag: tagFilter,
+          }}
+          onClose={() => setModal(null)}
+          onChanged={() => {
+            clearDraft();
+            reload();
+            setDetailTick((v) => v + 1);
+          }}
+          onApply={(filter: SavedFilter) => {
+            setModal(null);
+            setGlobal(!filter.kind);
+            if (['knowledge', 'repo', 'credential'].includes(filter.kind || ''))
+              setPillar(filter.kind as Pillar);
+            setQuery(filter.q || '');
+            setCategory(filter.category || 'all');
+            setDimension('all');
+            setScopeProject(filter.project ?? undefined);
+            setFavorite(!!filter.favorite);
+            setView(filter.view || 'all');
+            setSort(filter.sort || 'relevance');
+            setTagFilter(filter.tag ?? undefined);
+            setLimit(100);
+          }}
+        />
+      )}
       {modal === 'ingest' && (
         <IngestModal
           initialUrl={ingestUrl}
           unlocked={unlocked}
           onClose={() => setModal(null)}
-          onSaved={created}
+          onQueued={() => {
+            showModal('tasks');
+            reload();
+            notify('已加入收录队列，可以关闭窗口，稍后在“任务与更新”查看结果。');
+          }}
           onDraft={modalDraft}
         />
+      )}
+      {modal === 'tasks' && (
+        <TaskCenter
+          unlocked={unlocked}
+          onClose={() => {
+            setModal(null);
+            reload();
+          }}
+          onChanged={reload}
+          onOpen={(entry) => {
+            clearDraft();
+            setView('all');
+            setScopeProject(undefined);
+            setTagFilter(undefined);
+            setGlobal(true);
+            setQuery('');
+            selectItem(entry);
+            setModal(null);
+            reload();
+          }}
+        />
+      )}
+      {modal === 'insights' && (
+        <Suspense
+          fallback={
+            <Modal title="使用与反馈" onClose={() => setModal(null)}>
+              <p className="modal-body">正在加载…</p>
+            </Modal>
+          }
+        >
+          <InsightsPanel
+            unlocked={unlocked}
+            onDraft={modalDraft}
+            onClose={() => setModal(null)}
+            onShowGuide={() => {
+              setGuideTick((v) => v + 1);
+              setModal(null);
+            }}
+          />
+        </Suspense>
       )}
       {modal === 'unlock' && (
         <Modal
@@ -772,8 +1079,8 @@ function App() {
           }}
         >
           <div className="modal-body">
-            <p>永久删除「{(pendingDelete || item)!.title}」及其离线图片和附件？</p>
-            <p className="muted">此操作无法撤销。</p>
+            <p>将「{(pendingDelete || item)!.title}」移入回收站？</p>
+            <p className="muted">正文、离线图片、附件和历史版本都会保留，可在“数据与安全”中恢复。</p>
             {modalError && (
               <div className="error" role="alert">
                 {modalError}
@@ -791,7 +1098,7 @@ function App() {
               取消
             </button>
             <button className="danger" disabled={busy} onClick={() => void remove()}>
-              永久删除
+              移入回收站
             </button>
           </div>
         </Modal>

@@ -1,11 +1,12 @@
 [package]
 name = "infohub-server"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
 aes-gcm = "0.10"
 argon2 = "0.5"
+async_zip = { version = "0.0.17", default-features = false }
 axum = { version = "0.8", features = ["multipart"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
@@ -24,6 +25,8 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
 tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+tempfile = "3"
 tower-http = { version = "0.6", features = ["cors", "fs", "trace", "set-header"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

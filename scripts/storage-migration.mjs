@@ -27,7 +27,8 @@ await admin.query('CREATE DATABASE "' + dbName + '"');
 const db = new pg.Client({ connectionString: dbUrl.toString() });
 await db.connect();
 const executable = resolve(
-  'server/target/debug/infohub-server' + (process.platform === 'win32' ? '.exe' : ''),
+  process.env.INFOHUB_TEST_BINARY ||
+    'server/target/debug/infohub-server' + (process.platform === 'win32' ? '.exe' : ''),
 );
 const base = 'http://127.0.0.1:33310/api';
 let server;
@@ -122,7 +123,9 @@ try {
   const plain = Buffer.from('legacy plain attachment');
   const encryptedAttachment = await upload(credential, secret);
   const plainAttachment = await upload(article, plain);
-  const oldAttachments = (await db.query('SELECT id,storage_key FROM attachments ORDER BY id')).rows;
+  const oldAttachments = (
+    await db.query('SELECT id,storage_key,to_jsonb(attachments) AS record FROM attachments ORDER BY id')
+  ).rows;
   for (const file of oldAttachments) file.bytes = readFileSync(resolve(seedRoot, file.storage_key));
   const imageId = '40404040-1010-4040-8080-202020202020';
   const png = Buffer.from(
@@ -132,19 +135,41 @@ try {
   await stop();
   assert.match(dbName, /^infohub_migration_\d+$/);
   assert.equal((await db.query('SELECT current_database() AS name')).rows[0].name, dbName);
+  const vault = (await db.query('SELECT to_jsonb(vault_config) AS record FROM vault_config')).rows;
+  const items = (await db.query('SELECT to_jsonb(items) AS record FROM items')).rows;
   await db.query('BEGIN');
-  await db.query('DROP FUNCTION track_file_reference() CASCADE');
-  for (const table of ['attachments', 'media']) {
-    await db.query('ALTER TABLE ' + table + ' ADD COLUMN content BYTEA');
-    if (table === 'attachments') {
-      for (const file of oldAttachments)
-        await db.query('UPDATE attachments SET content=$2 WHERE id=$1', [file.id, file.bytes]);
-    }
-    await db.query('ALTER TABLE ' + table + ' ALTER COLUMN content SET NOT NULL');
-    await db.query('ALTER TABLE ' + table + ' DROP COLUMN storage_key');
+  // Reconstruct v1 itself, instead of attempting to reverse each later schema
+  // change. Only this generated, identity-checked fixture database is modified.
+  const tables = (
+    await db.query(
+      "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'_sqlx_migrations'",
+    )
+  ).rows;
+  for (const { tablename } of tables) {
+    await db.query('DROP TABLE IF EXISTS public."' + tablename.replaceAll('"', '""') + '" CASCADE');
   }
-  await db.query('DROP TABLE file_objects');
-  await db.query('DELETE FROM _sqlx_migrations WHERE version=2');
+  for (const name of ['track_file_reference', 'snapshot_item', 'ensure_item_project']) {
+    await db.query('DROP FUNCTION IF EXISTS ' + name + '() CASCADE');
+  }
+  await db.query(readFileSync('server/migrations/0001_initial.sql', 'utf8'));
+  for (const [table, rows] of [
+    ['vault_config', vault],
+    ['items', items],
+  ]) {
+    for (const { record } of rows) {
+      await db.query(
+        'INSERT INTO ' + table + ' SELECT * FROM jsonb_populate_record(NULL::' + table + ', $1::jsonb)',
+        [JSON.stringify(record)],
+      );
+    }
+  }
+  for (const file of oldAttachments) {
+    await db.query(
+      'INSERT INTO attachments SELECT * FROM jsonb_populate_record(NULL::attachments, $1::jsonb)',
+      [JSON.stringify({ ...file.record, content: '\\x' + file.bytes.toString('hex') })],
+    );
+  }
+  await db.query('DELETE FROM _sqlx_migrations WHERE version>=2');
   await db.query(
     "INSERT INTO media(id,item_id,source_url,mime,content,sha256) VALUES ($1,$2,'https://example.com/image.png','image/png',$3,'legacy-hash')",
     [imageId, article.id, png],

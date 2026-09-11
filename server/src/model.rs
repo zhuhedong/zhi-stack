@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Deserialize, sqlx::FromRow)]
 pub struct ItemRow {
     pub id: Uuid,
     pub kind: String,
@@ -264,8 +264,7 @@ mod tests {
         let mut input = ItemInput {
             kind: "knowledge".into(),
             title: "笔记".into(),
-            tags: std::iter::repeat("alpha".to_string())
-                .take(51)
+            tags: std::iter::repeat_n("alpha".to_string(), 51)
                 .chain(["".into(), "  ".into(), " alpha ".into()])
                 .collect(),
             data: serde_json::json!({}),
