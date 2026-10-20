@@ -27,7 +27,7 @@ use axum::{
 };
 use sqlx::PgPool;
 use std::sync::Arc;
-use tokio::sync::{Mutex, Notify, RwLock};
+use tokio::sync::{Mutex, Notify, RwLock, Semaphore};
 use tower_http::{
     cors::CorsLayer,
     services::{ServeDir, ServeFile},
@@ -41,6 +41,8 @@ pub struct AppState {
     pub file_cleanup: Arc<Notify>,
     pub sessions: auth::Sessions,
     pub login_limiter: Arc<Mutex<auth::Limiter>>,
+    /// Caps concurrent Argon2id derives so login floods cannot exhaust CPU/RAM.
+    pub argon2_limit: Arc<Semaphore>,
     /// One-time token required by `/auth/setup` while the vault is uninitialized.
     pub setup_token: Arc<Mutex<Option<String>>>,
     pub settings: Arc<config::Settings>,
@@ -74,6 +76,7 @@ impl AppState {
             file_cleanup: Arc::new(Notify::new()),
             sessions: Default::default(),
             login_limiter: Default::default(),
+            argon2_limit: Arc::new(Semaphore::new(auth::ARGON2_PERMITS)),
             setup_token: Arc::new(Mutex::new(settings.setup_token.clone())),
             network: net::Network {
                 allowed_private_hosts: settings.allowed_private_hosts.clone(),
@@ -507,6 +510,8 @@ mod web_ui_tests {
         assert!(page.contains("<title>新时代农民工笔记</title>"));
         assert!(page.contains("湘ICP备2023031880号-1"));
         assert!(page.contains(r#"href="https://beian.miit.gov.cn/""#));
+        assert!(page.contains(r#"href="https://github.com/zhuhedong/zhi-stack""#));
+        assert!(page.matches("github.com/zhuhedong/zhi-stack").count() >= 4);
     }
 
     #[tokio::test]

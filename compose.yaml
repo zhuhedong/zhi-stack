@@ -51,6 +51,8 @@ services:
     environment:
       <<: *app-env
       # The bundled database always wins over any DATABASE_URL in .env.
+      # POSTGRES_PASSWORD is interpolated raw into this URL — use alphanumeric
+      # only (e.g. openssl rand -hex 24). Special chars like @ # : / ? break the URL.
       DATABASE_URL: postgres://infohub:${POSTGRES_PASSWORD:-}@postgres:5432/infohub
     depends_on:
       postgres:
