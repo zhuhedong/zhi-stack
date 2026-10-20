@@ -446,6 +446,14 @@ mod web_ui_tests {
         let page = landing_page(None);
         assert!(page.contains("下载地址未配置"));
         assert!(!page.contains("{{"));
+        let page = landing_page(Some("https://example.com/download"));
+        assert_eq!(
+            page.matches(r#"href="https://example.com/download""#)
+                .count(),
+            3
+        );
+        assert!(page.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))));
+        assert!(!page.contains("{{") && !page.contains("<script"));
     }
 
     #[tokio::test]
