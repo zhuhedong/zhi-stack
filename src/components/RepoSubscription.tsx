@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
-import { Markdown } from './Markdown';
+import { Markdown } from './LazyMarkdown';
 import { SourceLink } from './SourceLink';
 
 export interface Subscription {

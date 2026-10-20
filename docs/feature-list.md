@@ -289,7 +289,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 前端开发代理、生产构建、Rust 服务静态文件托管及 SPA 回退。
 - 健康/初始化状态接口、启动存储读写自检、服务日志、Ctrl+C 与 Linux SIGTERM 优雅关闭。
 - Dockerfile、应用与 PG 的 Compose 配置、数据库健康检查、命名数据卷和重启策略。
-- 已有远程 PG 时可用独立 [compose.external-pg.yaml](../compose.external-pg.yaml) 只部署应用；支持分项 PG 连接、SSL 模式及可选 CA 证书挂载，步骤见 [使用已有 PG 部署](deploy-external-pg.md)。此模式未做容器实跑验收。
+- 已有远程 PG 时在 `.env` 设置 `COMPOSE_PROFILES=external` 和 `DATABASE_URL`，只部署应用；SSL 模式与 CA 证书通过 `DATABASE_URL` 参数和 `certs/` 目录配置，步骤见 [部署说明](deploy.md)。
 - 桌面首次启动直接填写服务端地址，支持测试连接；保存到用户配置目录的 `config.json` 后才连接，下次启动自动读取。无默认服务器，旧缓存只用于预填。更换服务器清除原会话和密码，无需重新打包。
 - 业务确认使用统一弹窗，危险操作明确标识，默认聚焦取消；Esc 只取消最上层确认，关闭后恢复焦点。表单校验显示页面内错误并聚焦对应字段；桌面关闭窗口等待自定义确认，浏览器刷新/关闭的离开提醒由浏览器控制。
 - Tauri 开发与构建流程；桌面 CSP 支持配置的 HTTP/HTTPS 服务，服务端 CORS 保留桌面来源。
@@ -370,6 +370,6 @@ Windows 发布流程生成 release EXE、NSIS 安装器、独立服务端、前�
 | “版本冲突”             | 乐观并发保护、历史查看与回滚；没有自动差异合并                 |
 | “桌面打包”             | release EXE 与 NSIS 发布流程；独立服务/PG 仍需配置             |
 
-这些差异不记作已实现功能，也不表示已确定新增需求。原型依据：[亮色交互原型](../dosc/infohub_apple_light.html)。
+这些差异不记作已实现功能，也不表示已确定新增需求。原型依据：[亮色交互原型](design/infohub_apple_light.html)。
 
 仓库中的 `src-tauri/src/db.rs`、`crypto.rs`、`net.rs` 没有接入当前桌面入口；`src/store/mockData.ts` 是空模块。它们不构成另一套已启用的本地数据库、加密、采集或模拟数据功能。

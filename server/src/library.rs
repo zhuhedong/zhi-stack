@@ -143,6 +143,27 @@ fn score(row: &ItemRow, annotation: &str, q: &str, auth: &Auth) -> Option<(i32, 
         data_snippet(&row.data, q).map(|s| (10, s))
     }
 }
+/// Upper bound of rows scored per search request.
+const SEARCH_CANDIDATES: usize = 2000;
+/// SQL LIKE pattern for the PostgreSQL prefilter, or `None` when the query
+/// cannot be matched safely against the JSON text (escaped characters) or
+/// PostgreSQL's `lower()` might fold case differently from Rust.
+fn like_pattern(q: &str) -> Option<String> {
+    let unsafe_char = |c: char| {
+        c == '"'
+            || c == '\\'
+            || c.is_control()
+            || (!c.is_ascii() && c.to_uppercase().collect::<String>() != c.to_string())
+    };
+    if q.is_empty() || q.chars().any(unsafe_char) {
+        return None;
+    }
+    let escaped = q
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    Some(format!("%{escaped}%"))
+}
 pub async fn list(
     State(state): State<AppState>,
     Extension(auth): Extension<Auth>,
@@ -205,8 +226,20 @@ pub async fn list(
     } else {
         let mut select = QueryBuilder::new("SELECT i.*,COALESCE(s.annotation,'') AS annotation");
         filters(&mut select, &filter);
-        select.push(format!(" ORDER BY {order}"));
-        let query = select.build_query_as::<Candidate>();
+        if let Some(pattern) = like_pattern(&q) {
+            // Credentials keep their searchable fields encrypted, so they are
+            // always candidates and matched after decryption in `score`.
+            select
+                .push(" AND (i.kind='credential' OR i.id IN (SELECT item_id FROM item_search WHERE text LIKE ")
+                .push_bind(pattern.clone())
+                .push(" UNION ALL SELECT item_id FROM item_state WHERE lower(annotation) LIKE ")
+                .push_bind(pattern)
+                .push("))");
+        }
+        select.push(format!(" ORDER BY {order} LIMIT {SEARCH_CANDIDATES}"));
+        // Unnamed statement: the LIKE pattern must be visible to the planner so the
+        // trigram index is used (a cached generic plan would fall back to a scan).
+        let query = select.build_query_as::<Candidate>().persistent(false);
         let mut rows = query.fetch(&state.db);
         let mut matches = 0;
         while let Some(Candidate {
@@ -371,6 +404,15 @@ pub async fn merge_tags(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn like_pattern_escapes_wildcards_and_skips_unsafe_queries() {
+        assert_eq!(super::like_pattern("a_b%").as_deref(), Some("%a\\_b\\%%"));
+        assert_eq!(super::like_pattern("中文").as_deref(), Some("%中文%"));
+        assert!(super::like_pattern("say \"hi\"").is_none());
+        assert!(super::like_pattern("c:\\x").is_none());
+        assert!(super::like_pattern("é").is_none());
+        assert!(super::like_pattern("").is_none());
+    }
     use super::*;
     #[test]
     fn snippet_handles_unicode_case_expansion_and_late_matches() {

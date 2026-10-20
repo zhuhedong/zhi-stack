@@ -12,7 +12,8 @@ import { RepoView } from '../src/components/views/RepoView';
 import { VersionHistory } from '../src/components/VersionHistory';
 import { Attachments } from '../src/components/Attachments';
 import { ConfirmationProvider } from '../src/components/ConfirmationProvider';
-import { Markdown, archivedMediaPath } from '../src/components/Markdown';
+import { Markdown } from '../src/components/Markdown';
+import { archivedMediaPath } from '../src/lib/media';
 import { emptyEndpoint } from '../src/lib/request';
 import type { Item } from '../src/types';
 
@@ -448,9 +449,25 @@ test('initialization rejects mismatched confirmation before sending the master p
   await render(<AuthScreen onLogin={vi.fn()} />);
   await fill(input('主密码'), 'a-valid-test-password');
   await fill(input('确认主密码'), 'different-test-password');
+  await fill(input('初始化令牌'), 'token-from-server-log');
   await submit();
   expect(host.querySelector('[role=alert]')?.textContent).toContain('两次输入的主密码不一致');
   expect(mocks.api).toHaveBeenCalledTimes(1);
+});
+
+test('initialization sends the one-time setup token with the new master password', async () => {
+  mocks.api.mockResolvedValueOnce({ initialized: false, database: 'PostgreSQL', version: '0.2.2' });
+  mocks.api.mockResolvedValueOnce({ token: 'session' });
+  await render(<AuthScreen onLogin={vi.fn()} />);
+  await fill(input('主密码'), 'a-valid-test-password');
+  await fill(input('确认主密码'), 'a-valid-test-password');
+  await fill(input('初始化令牌'), '  token-from-server-log ');
+  await submit();
+  expect(mocks.api.mock.lastCall![0]).toBe('/auth/setup');
+  expect(JSON.parse(mocks.api.mock.lastCall![1].body)).toEqual({
+    password: 'a-valid-test-password',
+    setupToken: 'token-from-server-log',
+  });
 });
 
 test('global headers, per-endpoint overrides and disabled headers control the actual request', async () => {

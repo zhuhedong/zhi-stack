@@ -14,7 +14,7 @@ export function sourceFingerprint() {
         !path.startsWith('.local/') &&
         (/\.(rs|tsx?|m?js|json|toml|sql|ya?ml|css|ps1|html|svg|png|ico|icns)$/.test(path) ||
           path.endsWith('Cargo.lock') ||
-          ['Dockerfile', '.dockerignore', '.env.example', '.env.external-pg.example'].includes(path)),
+          ['Dockerfile', '.dockerignore', '.env.example'].includes(path)),
     )
     .sort();
   const hash = createHash('sha256');

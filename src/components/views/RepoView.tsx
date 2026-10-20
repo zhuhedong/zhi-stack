@@ -3,7 +3,7 @@ import { Code2, Copy, ExternalLink, FolderOpen, GitFork, Save, Star, Terminal, U
 import type { Item } from '../../types';
 import { dateLabel } from '../../types';
 import { copyText, desktopAction, errorMessage, saveItem } from '../../lib/api';
-import { Markdown } from '../Markdown';
+import { Markdown } from '../LazyMarkdown';
 import { Attachments } from '../Attachments';
 import { SourceLink } from '../SourceLink';
 import { useDraft } from '../../lib/useDraft';

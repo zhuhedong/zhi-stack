@@ -12,6 +12,7 @@
     "server": "cargo run --manifest-path server/Cargo.toml",
     "db:dev": "node scripts/dev-db.mjs",
     "test:server": "cargo test --manifest-path server/Cargo.toml",
+    "test:all-integration": "node scripts/integration.mjs && node scripts/lifecycle-integration.mjs && node scripts/library-integration.mjs && node scripts/api-workspace-integration.mjs && node scripts/background-integration.mjs && node scripts/insights-integration.mjs",
     "test:integration": "node scripts/integration.mjs",
     "test:lifecycle": "node scripts/lifecycle-integration.mjs",
     "test:library": "node scripts/library-integration.mjs",
@@ -51,5 +52,8 @@
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
     "vitest": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }

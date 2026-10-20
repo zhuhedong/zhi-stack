@@ -1,6 +1,6 @@
 # InfoHub 设计系统
 
-本项目统一执行 [dosc/Style_Design.md](dosc/Style_Design.md)。该文件是视觉规范；[亮色原型](dosc/infohub_apple_light.html)提供内容布局参考。按用户最新反馈，原型中的外围展示画框与三色窗口按钮不进入产品。服务端使用 PostgreSQL，原型中的演示数据不作为产品事实。
+本项目统一执行 [docs/design/Style_Design.md](docs/design/Style_Design.md)。该文件是视觉规范；[亮色原型](docs/design/infohub_apple_light.html)提供内容布局参考。按用户最新反馈，原型中的外围展示画框与三色窗口按钮不进入产品。服务端使用 PostgreSQL，原型中的演示数据不作为产品事实。
 
 - 全应用采用 Apple Light Glassmorphism；登录、工作台、弹窗共享同一套材质、色彩和字体。
 - 工作台保留三栏结构：208px 导航、320px 列表、最大 768px 内容画布。
@@ -19,7 +19,7 @@
 ### CSS
 
 ```css
-/* InfoHub · canonical tokens from dosc/Style_Design.md · Apple Light Glassmorphism */
+/* InfoHub · canonical tokens from docs/design/Style_Design.md · Apple Light Glassmorphism */
 :root {
   color-scheme: light;
   --color-paper: #f5f5f7;

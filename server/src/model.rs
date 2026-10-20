@@ -201,10 +201,8 @@ fn validate_data(data: &Value) -> Result<()> {
             return Err(AppError::bad(format!("{field} 必须为文本")));
         }
     }
-    for field in ["releaseUrl"] {
-        if let Some(url) = data[field].as_str().filter(|s| !s.is_empty()) {
-            crate::net::parse_url(url)?;
-        }
+    if let Some(url) = data["releaseUrl"].as_str().filter(|s| !s.is_empty()) {
+        crate::net::parse_url(url)?;
     }
     if let Some(fields) = data.get("fields") {
         if !fields

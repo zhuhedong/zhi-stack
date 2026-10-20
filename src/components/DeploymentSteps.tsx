@@ -33,8 +33,8 @@ export function DeploymentSteps() {
         </ul>
       </details>
       <p className="muted">
-        源码中的 <code>docs/deploy-docker.md</code>、<code>docs/deploy-external-pg.md</code> 和{' '}
-        <code>docs/operations.md</code> 提供完整部署、升级和恢复步骤。PG 密码与工作台主密码是两个独立密码。
+        源码中的 <code>docs/deploy.md</code> 和 <code>docs/operations.md</code>{' '}
+        提供完整部署、升级和恢复步骤。PG 密码与工作台主密码是两个独立密码。
       </p>
     </section>
   );

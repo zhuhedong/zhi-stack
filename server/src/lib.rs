@@ -1,6 +1,7 @@
 pub mod api_history;
 pub mod auth;
 pub mod backup;
+pub mod config;
 pub mod crypto;
 pub mod error;
 pub mod files;
@@ -24,7 +25,7 @@ use axum::{
     Router,
 };
 use sqlx::PgPool;
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 use tokio::sync::{Mutex, Notify, RwLock};
 use tower_http::{
     cors::CorsLayer,
@@ -38,7 +39,10 @@ pub struct AppState {
     pub storage: storage::FileStorage,
     pub file_cleanup: Arc<Notify>,
     pub sessions: auth::Sessions,
-    pub login_attempts: Arc<Mutex<(Instant, u32)>>,
+    pub login_limiter: Arc<Mutex<auth::Limiter>>,
+    /// One-time token required by `/auth/setup` while the vault is uninitialized.
+    pub setup_token: Arc<Mutex<Option<String>>>,
+    pub settings: Arc<config::Settings>,
     pub network: net::Network,
     pub github_token: Option<String>,
     pub maintenance: Arc<RwLock<()>>,
@@ -52,32 +56,41 @@ pub struct AppState {
 }
 impl AppState {
     pub fn new(db: PgPool, storage: storage::FileStorage) -> Self {
+        Self::with_settings(
+            db,
+            storage,
+            config::Settings::from_env().unwrap_or_default(),
+        )
+    }
+    pub fn with_settings(
+        db: PgPool,
+        storage: storage::FileStorage,
+        settings: config::Settings,
+    ) -> Self {
         Self {
             db,
             storage,
             file_cleanup: Arc::new(Notify::new()),
             sessions: Default::default(),
-            login_attempts: Arc::new(Mutex::new((Instant::now(), 0))),
+            login_limiter: Default::default(),
+            setup_token: Arc::new(Mutex::new(settings.setup_token.clone())),
             network: net::Network {
-                allowed_private_hosts: std::env::var("ALLOWED_PRIVATE_HOSTS")
-                    .unwrap_or_default()
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_owned)
-                    .collect(),
+                allowed_private_hosts: settings.allowed_private_hosts.clone(),
             },
-            github_token: std::env::var("GITHUB_TOKEN").ok().filter(|s| !s.is_empty()),
+            github_token: settings.github_token.clone(),
             maintenance: Arc::new(RwLock::new(())),
             active_requests: Default::default(),
             active_jobs: Default::default(),
             jobs_notify: Default::default(),
             subscriptions_notify: Default::default(),
-            github_api_base: std::env::var("GITHUB_API_BASE")
-                .unwrap_or_else(|_| "https://api.github.com".into()),
+            github_api_base: settings.github_api_base.clone(),
+            settings: Arc::new(settings),
         }
     }
 }
+/// Content-Security-Policy for the web build. Mirrors the Tauri policy but
+/// only allows API calls to the same origin.
+pub const WEB_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/session", get(auth::session))
@@ -211,9 +224,10 @@ pub fn router(state: AppState) -> Router {
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-store"),
         ));
-    let origins = std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| "http://localhost:5173,http://127.0.0.1:5173,http://tauri.localhost,https://tauri.localhost,tauri://localhost".into());
-    let origins: Vec<HeaderValue> = origins
-        .split(',')
+    let origins: Vec<HeaderValue> = state
+        .settings
+        .allowed_origins
+        .iter()
         .filter_map(|s| s.trim().parse().ok())
         .collect();
     let cors = CorsLayer::new()
@@ -221,7 +235,7 @@ pub fn router(state: AppState) -> Router {
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
         .expose_headers([header::CONTENT_DISPOSITION]);
-    let frontend = std::env::var("FRONTEND_DIR").unwrap_or_else(|_| "dist".into());
+    let frontend = state.settings.frontend_dir.clone();
     Router::new()
         .nest("/api", api)
         .fallback_service(
@@ -237,6 +251,10 @@ pub fn router(state: AppState) -> Router {
         .layer(SetResponseHeaderLayer::overriding(
             header::REFERRER_POLICY,
             HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(WEB_CSP),
         ))
         .layer(SetResponseHeaderLayer::overriding(
             header::X_FRAME_OPTIONS,

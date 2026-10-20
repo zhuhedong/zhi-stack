@@ -1,6 +1,6 @@
 # 设计核查与修复
 
-日期：2026-09-09。依据：[Style_Design.md](../dosc/Style_Design.md)、[Apple Light 原型](../dosc/infohub_apple_light.html)。服务端继续使用用户指定的 PostgreSQL。
+日期：2026-09-09。依据：[Style_Design.md](design/Style_Design.md)、[Apple Light 原型](design/infohub_apple_light.html)。服务端继续使用用户指定的 PostgreSQL。
 
 ## 窗口结构纠正
 
@@ -19,7 +19,7 @@
 | 请求头未在同一表格展示               | 默认打开 Headers；合并显示全局继承和接口专属字段，支持启用、编辑、删除与覆盖；敏感请求头默认遮蔽，修改与参数一起持久保存            |
 | 标题、输入框和滚动条参数不符         | 系统字体栈、12px 基础字号、H1 24px/700、H2 14px/600；输入框圆角 8px，聚焦蓝色边框；6px 滚动条、10px 滑块圆角、黑色 10% 滑块         |
 | 亮色原型初始化报错                   | 拆分 `classList.add/remove` 的复合类名参数；修复残余深色背景、深色边框和浅色文字；校正字体、滚动条、默认 Headers、动态接口数量      |
-| 多份设计稿互相冲突                   | 两份旧深色配色页添加可见停用提示与当前规范链接；新增 `dosc/README.md` 说明优先级，`docs/README.md` 提供入口                         |
+| 多份设计稿互相冲突                   | 两份旧深色配色页添加可见停用提示与当前规范链接；新增 `docs/design/README.md` 说明优先级，`docs/README.md` 提供入口                         |
 
 生产构建验收曾发现显式重复的 `-webkit-backdrop-filter` 使压缩结果只保留前缀属性。源码改用标准属性，由构建器补充兼容前缀；最终 CSS 同时保留标准属性，避免主窗口和侧栏失去模糊材质。
 

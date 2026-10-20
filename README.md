@@ -1,8 +1,8 @@
 # InfoHub 开发者数字工作台
 
-按照 [Apple Light 设计规范](dosc/Style_Design.md)和[亮色交互原型](dosc/infohub_apple_light.html)实现，使用 React + TypeScript 前端、Rust / Axum 服务端和 PostgreSQL。浏览器和 Tauri 桌面客户端使用同一套 HTTP API。业务记录和文件元数据保存在 PG；附件、文章图片保存在服务器磁盘或 Cloudflare R2，默认使用磁盘，运行时不使用 SQLite 或模拟数据。
+按照 [Apple Light 设计规范](docs/design/Style_Design.md)和[亮色交互原型](docs/design/infohub_apple_light.html)实现，使用 React + TypeScript 前端、Rust / Axum 服务端和 PostgreSQL。浏览器和 Tauri 桌面客户端使用同一套 HTTP API。业务记录和文件元数据保存在 PG；附件、文章图片保存在服务器磁盘或 Cloudflare R2，默认使用磁盘，运行时不使用 SQLite 或模拟数据。
 
-设计文件的有效版本见 [设计资料说明](dosc/README.md)。浅色玻璃材质、系统字体、颜色和尺寸统一由 [tokens.css](tokens.css) 管理；修复及验收记录见 [设计核查](docs/design-review.md)。
+设计文件的有效版本见 [设计资料说明](docs/design/README.md)。浅色玻璃材质、系统字体、颜色和尺寸统一由 [tokens.css](tokens.css) 管理；修复及验收记录见 [设计核查](docs/design-review.md)。
 
 ## 已实现的功能
 
@@ -74,27 +74,19 @@ DATABASE_URL=postgres://your_user:your_url_encoded_password@127.0.0.1:5432/infoh
 BIND_ADDR=127.0.0.1:3210
 ```
 
-连接 URL 中的特殊字符应做 URL 编码；也可不设置 `DATABASE_URL`，改用 `PGHOST`、`PGPORT`、`PGUSER`、`PGPASSWORD`、`PGDATABASE`。然后运行 `npm run server` 与 `npm run dev`。
-
-**已有远程 PG，只用 Docker 部署应用**：使用独立文件 [compose.external-pg.yaml](compose.external-pg.yaml)。复制 [.env.external-pg.example](.env.external-pg.example) 为 `.env.external-pg` 并填写已有数据库连接，然后执行：
-
-```bash
-docker compose --env-file .env.external-pg -f compose.external-pg.yaml up -d --build
-```
-
-该文件只启动应用，通过 Docker 默认网络连接远程 PG，支持 `PGSSLMODE` 和可选 CA 证书挂载。数据库需提前准备好，账户需有迁移权限。网络、SSL、检查命令和访问配置见 [使用已有 PG 部署](docs/deploy-external-pg.md)。
+连接 URL 中的特殊字符应做 URL 编码。旧的 `PGHOST`/`PGUSER`/... 分项变量仍可用，但已弃用。然后运行 `npm run server` 与 `npm run dev`。
 
 ### 方式三：Docker Compose
 
-在 `.env` 中设置独立的 `POSTGRES_PASSWORD`，然后启动应用和数据库：
+只有一个 [compose.yaml](compose.yaml)，用 `.env` 中的 `COMPOSE_PROFILES` 选择部署方式：`bundled`（自带 PG，默认）、`external`（已有 PG，填 `DATABASE_URL`）、`1panel`。
 
 ```powershell
+cp .env.example .env   # 至少改掉 POSTGRES_PASSWORD（或 DATABASE_URL）的占位值
 docker compose up --build -d
+docker compose logs app | grep setup_token   # 首次设置主密码时需要这个一次性令牌
 ```
 
-访问 **http://127.0.0.1:3210/**。Compose 使用 PostgreSQL 17 和命名数据卷 `infohub_pg`，默认只向本机开放端口。应用直接接收 PG 连接变量，因此密码中的特殊字符不需要 URL 编码。
-
-生产环境建议由 GitHub Actions 构建镜像并推送到 GHCR，服务器只拉取镜像，不必在机上编译。步骤见 [Docker 部署与 GitHub 自动构建镜像](docs/deploy-docker.md)。
+访问 **http://127.0.0.1:3210/**。自带 PG 使用 PostgreSQL 17 和命名数据卷 `infohub_pg`，不对宿主机开放 5432。已有 PG、CA 证书、1Panel、反代和从旧部署迁移见 [部署说明](docs/deploy.md)。
 
 仅启动数据库用于本地开发：
 
@@ -102,7 +94,7 @@ docker compose up --build -d
 docker compose up -d postgres
 ```
 
-此时将 `DATABASE_URL` 配置为 Compose 中的数据库信息。
+自带 PG 默认不映射端口；本地开发更推荐 `npm run db:dev`。
 
 ## 桌面端
 
@@ -130,7 +122,7 @@ npm run tauri -- build
 
 **更换服务地址不需要重新打包**。旧版本缓存的地址只用于预填，升级后需保存一次以创建配置文件。`VITE_API_URL` 仅用于浏览器版，桌面端始终读取用户保存的配置。
 
-PG 无需直接暴露给桌面客户端。服务端 `ALLOWED_ORIGINS` 保留 `http://tauri.localhost,https://tauri.localhost,tauri://localhost`；两份 Compose 的默认来源均已包含桌面端。桌面 CSP 支持用户配置的 HTTP/HTTPS 服务，不需要逐个修改域名。浏览器版使用当前站点或构建时配置的 API，不读取桌面地址偏好。切换服务会清除会话令牌及输入的主密码，连接测试不发送登录凭据。
+PG 无需直接暴露给桌面客户端。服务端默认允许的来源已包含 `http://tauri.localhost,https://tauri.localhost,tauri://localhost`，无需配置。桌面 CSP 支持用户配置的 HTTP/HTTPS 服务，不需要逐个修改域名。浏览器版使用当前站点或构建时配置的 API，不读取桌面地址偏好。切换服务会清除会话令牌及输入的主密码，连接测试不发送登录凭据。
 
 浏览器版支持 VS Code 协议链接及路径复制；浏览器不能直接打开本地终端/文件夹，对应按钮会提示使用桌面版。桌面命令检查路径是否为真实存在的绝对目录，不把路径拼进 shell 命令。
 
@@ -138,19 +130,24 @@ PG 无需直接暴露给桌面客户端。服务端 `ALLOWED_ORIGINS` 保留 `ht
 
 ## 配置与数据
 
-| 配置项                                      | 用途                                                              |
-| ------------------------------------------- | ----------------------------------------------------------------- |
-| `DATABASE_URL`                              | PostgreSQL 连接串；优先于分项 PG 变量                             |
-| `BIND_ADDR`                                 | 服务监听地址，默认 `127.0.0.1:3210`                               |
-| `FRONTEND_DIR`                              | 前端构建目录，默认 `dist`                                         |
-| `ALLOWED_ORIGINS`                           | 允许跨源访问 API 的前端源，以逗号分隔                             |
-| `ALLOWED_PRIVATE_HOSTS`                     | 允许采集/调试的内网主机，精确匹配主机名或 IP，以逗号分隔          |
-| `GITHUB_TOKEN`                              | 可选，提高 GitHub 请求配额，或读取已授权的私有仓库                |
-| `VITE_API_URL`                              | 可选，前端构建时指定 API 地址，需包含 `/api`                      |
-| `FILE_STORAGE`                              | 文件后端，`local`（默认）或 `r2`                                  |
-| `LOCAL_STORAGE_PATH`                        | 磁盘目录，直接运行默认 `.local/files`；Compose 固定 `/data/files` |
-| `R2_ENDPOINT` / `R2_BUCKET`                 | R2 S3 账户端点与私有 Bucket                                       |
-| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | 仅服务端使用的 R2 对象读写凭据                                    |
+所有配置项及说明都在 [.env.example](.env.example)（分“必填”和“可选”两段），由 `server/src/config.rs` 统一读取和校验。服务启动时会打印一份不含密钥的生效配置；数据库密码仍为示例占位值时拒绝启动。
+
+| 配置项 | 用途 |
+| ------ | ---- |
+| `DATABASE_URL` | PostgreSQL 连接串（唯一推荐方式；`PG*` 分项变量已弃用） |
+| `COMPOSE_PROFILES` / `POSTGRES_PASSWORD` | Docker：部署方式 / 自带 PG 的密码 |
+| `BIND_ADDR`、`INFOHUB_BIND_IP`、`INFOHUB_PORT` | 监听地址 / Compose 映射到宿主机的地址和端口 |
+| `PUBLIC_URL` | 反代后的对外地址，自动加入允许来源 |
+| `ALLOWED_ORIGINS` | 可选，完全自定义允许来源；默认按端口、`PUBLIC_URL` 和桌面端自动推导 |
+| `TRUSTED_PROXIES` | 可信反代 IP，用于按真实客户端 IP 限制登录尝试 |
+| `SETUP_TOKEN` | 首次初始化令牌；留空则在启动日志里随机生成 |
+| `ALLOWED_PRIVATE_HOSTS` | 允许采集/调试的内网主机，精确匹配 |
+| `GITHUB_TOKEN` / `GITHUB_API_BASE` | GitHub 配额与私有仓库 / GitHub Enterprise 地址 |
+| `FILE_STORAGE`、`LOCAL_STORAGE_PATH`、`R2_*`、`R2_ALLOW_HTTP` | 文件存储 |
+| `MAX_BACKUP_BYTES` | 恢复备份的上传上限，默认 512 MiB |
+| `VITE_API_URL` | 前端构建时指定 API 地址 |
+
+**会话说明**：登录会话只保存在服务进程内存中（有效期 8 小时，空闲 15 分钟自动锁定），不写入数据库。服务重启或升级后所有客户端需要重新登录，需要主密码的后台任务会停在“等待解锁”，解锁后自动继续。这是有意的设计：数据库泄露不会带出可用的会话或解密密钥。
 
 内网 API 示例：
 

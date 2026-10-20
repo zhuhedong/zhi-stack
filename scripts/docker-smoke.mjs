@@ -14,11 +14,17 @@ const app = prefix + '-app';
 const restored = prefix + '-restored';
 const password = 'Fixture-' + randomUUID();
 const databasePassword = randomUUID();
+const setupToken = 'smoke-setup-' + randomUUID();
 function docker(args, required = true) {
   const result = spawnSync('docker', args, {
     encoding: 'utf8',
     windowsHide: true,
-    env: { ...process.env, POSTGRES_PASSWORD: databasePassword, PGPASSWORD: databasePassword },
+    env: {
+      ...process.env,
+      POSTGRES_PASSWORD: databasePassword,
+      PGPASSWORD: databasePassword,
+      SETUP_TOKEN: setupToken,
+    },
     maxBuffer: 4 * 1024 * 1024,
   });
   if (required && (result.error || result.status !== 0))
@@ -47,13 +53,9 @@ function start(name, database) {
     '--mount',
     'type=volume,destination=/data/files',
     '-e',
-    'PGHOST=' + pg,
+    `DATABASE_URL=postgres://infohub:${databasePassword}@${pg}:5432/${database}`,
     '-e',
-    'PGUSER=infohub',
-    '-e',
-    'PGPASSWORD',
-    '-e',
-    'PGDATABASE=' + database,
+    'SETUP_TOKEN',
     '-p',
     '127.0.0.1::3210',
     image,
@@ -85,7 +87,7 @@ try {
   }
   start(app, 'infohub');
   let { base, health } = await waitForContainer(docker, app);
-  const token = (await call(base, '/auth/setup', '', { password })).token;
+  const token = (await call(base, '/auth/setup', '', { password, setupToken })).token;
   const asset = await call(base, '/items', token, {
     kind: 'knowledge',
     title: 'Docker验收',
@@ -112,6 +114,7 @@ try {
     file: backup.file,
     backupPassword: password,
     confirm: '恢复并替换',
+    setupToken,
   });
   const recoveredToken = (await call(recoveryBase, '/auth/login', '', { password })).token;
   assert.equal(

@@ -13,13 +13,13 @@ LOCAL_STORAGE_PATH=.local/files
 
 生产环境直接运行二进制时，建议设置固定绝对路径，例如 `LOCAL_STORAGE_PATH=/var/lib/infohub/files`，并让服务运行账号拥有该目录的读写权限。相对路径基于服务启动时的工作目录。
 
-使用已有远程 PG 的 Docker 部署，在 `.env.external-pg` 中保留：
+Docker 部署（任一 profile）在 `.env` 中保留：
 
 ```dotenv
 FILE_STORAGE=local
 ```
 
-[compose.external-pg.yaml](../compose.external-pg.yaml) 将服务器上的 Docker 命名卷 `infohub_files` 挂载到容器的 `/data/files`。实际卷名带 Compose 项目前缀，例如 `infohub_infohub_files`；更新或重建容器会复用该卷。容器以 UID 10001 运行，镜像已创建具有写入权限的目录。Compose 固定使用 `/data/files`，不读取 `.env` 中的 `LOCAL_STORAGE_PATH`。
+[compose.yaml](../compose.yaml) 将服务器上的 Docker 命名卷 `infohub_files` 挂载到容器的 `/data/files`。实际卷名带 Compose 项目前缀，例如 `infohub_infohub_files`；更新或重建容器会复用该卷。容器以 UID 10001 运行，镜像已创建具有写入权限的目录。Compose 固定使用 `/data/files`，不读取 `.env` 中的 `LOCAL_STORAGE_PATH`。
 
 如需指定宿主机目录，将 Compose 的应用 `volumes` 改为 `/srv/infohub/files:/data/files`，提前创建宿主机目录并授予 UID 10001 读写权限；已有卷内文件需要先完整复制到该目录。容器内路径继续保留 `/data/files`。
 
@@ -47,7 +47,7 @@ FILE_STORAGE=local
 5. 创建成功后立刻复制 **Access Key ID** → `R2_ACCESS_KEY_ID`，**Secret Access Key** → `R2_SECRET_ACCESS_KEY`。Secret 只显示一次。
 6. 确认页或 Overview 上的 S3 端点填到 `R2_ENDPOINT`，格式为 `https://<账户ID>.r2.cloudflarestorage.com`，不要带 Bucket 路径或 `*.r2.dev`。
 
-在服务端 `.env` 或 Docker 的 `.env.external-pg` 填写：
+在服务端 `.env` 填写：
 
 ```dotenv
 FILE_STORAGE=r2
@@ -62,12 +62,12 @@ R2_SECRET_ACCESS_KEY=你的SecretAccessKey
 更新部署：
 
 ```bash
-docker compose --env-file .env.external-pg -f compose.external-pg.yaml up -d --build
-docker compose --env-file .env.external-pg -f compose.external-pg.yaml logs --tail=100 app
+docker compose up -d --build
+docker compose logs --tail=100 app   # external/1panel 时为 app-external / app-1panel
 curl -fsS http://127.0.0.1:3210/api/health
 ```
 
-使用 PG CA 附加配置时，命令继续保留 `-f compose.external-pg.ca.yaml`。每次启动都会写入、读回校验并删除一个很小的 `checks/<UUID>` 对象，确认实际读写和删除权限；新库也执行检查。检查失败时不会开始监听 HTTP。失败检查记录进入持久清理队列，不含用户文件内容；修正同一 Bucket 的权限后会重试清理。错误端点上的失败检查不会阻止修正端点配置，无法再访问的旧检查对象需由该存储的管理员清理。
+每次启动都会写入、读回校验并删除一个很小的 `checks/<UUID>` 对象，确认实际读写和删除权限；新库也执行检查。检查失败时不会开始监听 HTTP。失败检查记录进入持久清理队列，不含用户文件内容；修正同一 Bucket 的权限后会重试清理。错误端点上的失败检查不会阻止修正端点配置，无法再访问的旧检查对象需由该存储的管理员清理。
 
 ## 从旧版 PG 文件字段升级
 

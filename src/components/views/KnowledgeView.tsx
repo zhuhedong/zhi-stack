@@ -3,7 +3,7 @@ import { Check, Code2, Download, FileText, Image, Save } from 'lucide-react';
 import type { Item } from '../../types';
 import { dateLabel } from '../../types';
 import { downloadBlob, errorMessage, exportText, request, saveItem } from '../../lib/api';
-import { Markdown } from '../Markdown';
+import { Markdown } from '../LazyMarkdown';
 import { Attachments } from '../Attachments';
 import { useDraft } from '../../lib/useDraft';
 import { usePersistentDraft } from '../../lib/usePersistentDraft';

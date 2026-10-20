@@ -1,6 +1,6 @@
-use infohub_server::{files, router, storage::FileStorage, AppState};
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use std::time::Duration;
+use infohub_server::{config::Config, files, router, storage::FileStorage, AppState};
+use sqlx::postgres::PgPoolOptions;
+use std::{net::SocketAddr, time::Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,23 +11,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or_else(|_| "infohub_server=info".into()),
         )
         .init();
-    let options =
-        if let Ok(url) = std::env::var("DATABASE_URL") {
-            url.parse::<PgConnectOptions>()?
-        } else {
-            PgConnectOptions::new()
-                .host(&std::env::var("PGHOST").map_err(|_| {
-                    "请设置 DATABASE_URL 或 PGHOST 等 PG 连接变量（参见 .env.example）"
-                })?)
-                .port(
-                    std::env::var("PGPORT")
-                        .unwrap_or_else(|_| "5432".into())
-                        .parse()?,
-                )
-                .username(&std::env::var("PGUSER")?)
-                .password(&std::env::var("PGPASSWORD")?)
-                .database(&std::env::var("PGDATABASE")?)
-        };
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let config = match Config::load() {
+        Ok(config) => config,
+        Err(message) => {
+            tracing::error!("配置错误：{message}");
+            return Err(message.into());
+        }
+    };
+    tracing::info!("InfoHub 生效配置：\n{}", config.summary());
+    let options = config.database.clone();
     let db = PgPoolOptions::new()
         .max_connections(10)
         .acquire_timeout(Duration::from_secs(10))
@@ -42,10 +35,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .execute(&db)
     .await?;
-    let state = AppState::new(db, storage);
+    let state = AppState::with_settings(db, storage, config.settings.clone());
+    infohub_server::auth::prepare_setup_token(&state).await?;
     infohub_server::jobs::initialize(&state).await?;
     infohub_server::subscriptions::initialize(&state).await?;
-    let address = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3210".into());
+    let address = config.settings.bind_addr;
     let listener = tokio::net::TcpListener::bind(&address).await?;
     tracing::info!(%address, "InfoHub connected to PostgreSQL; server ready");
     let cleanup_state = state.clone();
@@ -69,9 +63,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     let jobs_worker = tokio::spawn(infohub_server::jobs::worker(state.clone()));
     let subscriptions_worker = tokio::spawn(infohub_server::subscriptions::worker(state.clone()));
-    let result = axum::serve(listener, router(state))
-        .with_graceful_shutdown(shutdown_signal())
-        .await;
+    let result = axum::serve(
+        listener,
+        router(state).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await;
     cleanup_worker.abort();
     jobs_worker.abort();
     subscriptions_worker.abort();

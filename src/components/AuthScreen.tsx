@@ -1,11 +1,12 @@
 import { Form } from './Form';
-import { useEffect, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
 import { ArrowRight, BookOpen, Radar, LockKeyhole, LoaderCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { api, API_BASE, errorMessage, initializeServer, setToken } from '../lib/api';
 import { BrandIcon } from './BrandIcon';
 import { isDesktop } from '../lib/platform';
 import { ServerSettings } from './ServerSettings';
-import { RestoreForm } from './DataManager';
+
+const RestoreForm = lazy(() => import('./DataManager').then((m) => ({ default: m.RestoreForm })));
 import { Modal } from './Modal';
 import { previousServerUrl, serverInitialized } from '../lib/server';
 import { DeploymentSteps } from './DeploymentSteps';
@@ -21,6 +22,7 @@ export function AuthScreen({
   const [error, setError] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [setupToken, setSetupToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [settings, setSettings] = useState(initialServerSettings);
@@ -86,11 +88,12 @@ export function AuthScreen({
     try {
       const result = await api<{ token: string }>(initialized ? '/auth/login' : '/auth/setup', {
         method: 'POST',
-        body: JSON.stringify({ password }),
+        body: JSON.stringify(initialized ? { password } : { password, setupToken: setupToken.trim() }),
       });
       setToken(result.token);
       setPassword('');
       setConfirm('');
+      setSetupToken('');
       onLogin();
     } catch (error) {
       setError(errorMessage(error));
@@ -218,6 +221,21 @@ export function AuthScreen({
                         onChange={(e) => setConfirm(e.target.value)}
                       />
                     </label>
+                    <label>
+                      初始化令牌
+                      <input
+                        value={setupToken}
+                        required
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder="服务端启动日志中的 setup_token"
+                        onChange={(e) => setSetupToken(e.target.value)}
+                      />
+                    </label>
+                    <p className="form-hint">
+                      为防止他人抢先初始化，首次设置需要填写服务端启动日志里打印的一次性令牌（或部署时配置的
+                      SETUP_TOKEN）。
+                    </p>
                     <p className="form-hint">请妥善保存主密码。它无法找回，丢失后将无法解密已保存的凭证。</p>
                   </>
                 )}
@@ -284,15 +302,17 @@ export function AuthScreen({
           }}
         >
           <div className="modal-body">
-            <RestoreForm
-              initialized={false}
-              onBusy={setRestoring}
-              onRestored={() => {
-                setRestore(false);
-                setInitialized(null);
-                setRefresh((value) => value + 1);
-              }}
-            />
+            <Suspense fallback={null}>
+              <RestoreForm
+                initialized={false}
+                onBusy={setRestoring}
+                onRestored={() => {
+                  setRestore(false);
+                  setInitialized(null);
+                  setRefresh((value) => value + 1);
+                }}
+              />
+            </Suspense>
           </div>
         </Modal>
       )}

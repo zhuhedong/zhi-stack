@@ -94,7 +94,13 @@ try {
     /exist/i,
   );
   await assert.rejects(
-    maintain({ command: 'restore', base: b.base, file: backup.file, backupPassword: nextPassword }),
+    maintain({
+      command: 'restore',
+      base: b.base,
+      file: backup.file,
+      backupPassword: nextPassword,
+      setupToken: b.setupToken,
+    }),
     /confirm/,
   );
   await maintain({
@@ -103,6 +109,7 @@ try {
     file: backup.file,
     backupPassword: nextPassword,
     confirm: '恢复并替换',
+    setupToken: b.setupToken,
   });
   b.token = (await b.request('/auth/login', 'POST', { password: nextPassword })).token;
   assert.equal((await b.request('/usage')).preferences.usage_enabled, false);

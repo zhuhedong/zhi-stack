@@ -1,8 +1,10 @@
 use crate::error::{AppError, Result};
 use axum::http::StatusCode;
 use object_store::{
-    aws::AmazonS3Builder, local::LocalFileSystem, path::Path, ClientOptions, ObjectStore, PutMode,
-    RetryConfig,
+    aws::{AmazonS3Builder, AmazonS3ConfigKey},
+    local::LocalFileSystem,
+    path::Path,
+    ClientOptions, ObjectStore, ObjectStoreExt, PutMode, RetryConfig,
 };
 use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -107,6 +109,8 @@ impl FileStorage {
                     .with_access_key_id(required("R2_ACCESS_KEY_ID")?)
                     .with_secret_access_key(required("R2_SECRET_ACCESS_KEY")?)
                     .with_virtual_hosted_style_request(false)
+                    // Keep single-object DELETE requests (object_store 0.13+ defaults to bulk DeleteObjects).
+                    .with_config(AmazonS3ConfigKey::DisableBulkDelete, "true")
                     .with_client_options(ClientOptions::new().with_timeout(Duration::from_secs(30)))
                     .with_allow_http(allow_http)
                     .with_retry(RetryConfig {
