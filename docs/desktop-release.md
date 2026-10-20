@@ -4,9 +4,14 @@
 
 | 触发 | 做什么 |
 | --- | --- |
-| 推送 `v*` 标签 | 四个平台全量打包，创建/更新同名 **草稿** Release 并上传安装包 |
-| 手动运行（Actions → Desktop release → Run workflow） | 四个平台全量打包，安装包作为工作流 Artifacts 上传（保留 90 天） |
+| 推送到 main | 读取版本号；如果 `v<版本号>` 还没有发布，四个平台打包并**自动发布** Release（附自动生成的更新说明）；已经发布过（没有改版本号）就只跑几秒的检查，直接跳过 |
+| 手动推送 `v*` 标签 | 同上，标签必须等于 `v<版本号>` |
+| 手动运行（Actions → Desktop release → Run workflow） | 四个平台打包，安装包作为工作流 Artifacts 上传（保留 90 天）；勾选 `release` 时同时发布 Release；`tag` 可填 `v0.0.0-ci-test` 这类带 `-` 的测试标签，会发布成预发布版本 |
 | PR 修改了 `src-tauri/`、`src/`、`package*.json` 或本工作流 | 只在 Linux 上做一次 `tauri build --no-bundle` 编译检查，不打包不发布 |
+
+发布过程：先创建**草稿** Release，四个平台都成功后，最后一个 job 才把它改为已发布（此时才创建标签）。任何平台失败，草稿保留、运行失败；修复后再推一次 main（或重跑）会复用这个草稿，并清理掉旧的安装包。
+
+标签由工作流用 `GITHUB_TOKEN` 创建，GitHub 不会因此再触发新的运行，所以不会重复打包。同一个提交的 main 推送和标签推送会排队执行，后执行的那次看到已发布就跳过。
 
 产物：
 
@@ -19,19 +24,14 @@
 
 ## 发布步骤
 
-1. 同步修改三处版本号（必须一致，工作流第一步会检查，不一致直接失败）：
-   - `package.json` 的 `version`
-   - `src-tauri/tauri.conf.json` 的 `version`
-   - `src-tauri/Cargo.toml` 的 `version`（顺手 `cargo update -p app --manifest-path src-tauri/Cargo.toml` 更新锁文件）
-2. 提交并合并到 main，然后打标签，**标签必须是 `v` + 版本号**：
+1. 改版本号（三处必须一致，不一致工作流直接失败）：
    ```bash
-   git tag v0.2.3
-   git push origin v0.2.3
+   npm run version:bump 0.2.3
    ```
-3. 等 Actions 跑完（约 20–30 分钟），到 **Releases** 页面找到草稿 `v0.2.3`，检查安装包，编辑说明后点 **Publish release**。
-4. 下载地址：`https://github.com/zhuhedong/zhi-stack/releases/latest`（只指向已发布、非草稿的最新 Release）。
-
-同一个标签重跑工作流会更新同一个草稿 Release，不会重复创建。
+   它会同时改 `package.json`（和锁文件）、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`（和锁文件）。
+2. 提交、开 PR、合并到 main。
+3. 等 Actions 跑完（约 10–20 分钟），**Releases** 页面就会出现已发布的 `v0.2.3`，不需要手动操作。
+4. 下载地址：`https://github.com/zhuhedong/zhi-stack/releases/latest`。
 
 ## 介绍页下载按钮
 

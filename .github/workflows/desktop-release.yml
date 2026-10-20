@@ -1,14 +1,29 @@
 # Build the Tauri desktop client (src-tauri/) for macOS, Windows and Linux.
-#   push tag v*        -> build all platforms and attach installers to a DRAFT GitHub Release
-#   workflow_dispatch  -> build all platforms and upload installers as workflow artifacts
+#   push to main       -> if tag v<version> does not exist yet: build all platforms and
+#                         publish release v<version> (draft during the build, published
+#                         only after every platform succeeded). No version bump -> skip.
+#   push tag v*        -> same, for that tag (tag must equal v<version>)
+#   workflow_dispatch  -> build all platforms and upload workflow artifacts; with
+#                         release=true also publish a release (optionally a test prerelease)
 #   pull_request       -> cheap Linux-only compile check when desktop code changes
-# Signing is optional: missing secrets produce unsigned builds. See docs/desktop-release.md.
+# Tags created here by GITHUB_TOKEN do not trigger new workflow runs, so a main push
+# never causes a second tag-triggered run. Signing is optional; see docs/desktop-release.md.
 name: Desktop release
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Also create and publish a GitHub Release'
+        type: boolean
+        default: false
+      tag:
+        description: 'Release tag override (test prereleases only, must contain "-", e.g. v0.0.0-ci-test)'
+        type: string
+        default: ''
   pull_request:
     paths:
       - 'src-tauri/**'
@@ -20,8 +35,10 @@ on:
 permissions:
   contents: write
 
+# A main push and a tag push of the same commit (same version) run one after the
+# other; the second one sees the published release and skips.
 concurrency:
-  group: desktop-release-${{ github.ref }}
+  group: desktop-release-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -33,10 +50,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      build: ${{ steps.plan.outputs.build }}
+      release: ${{ steps.plan.outputs.release }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
       - id: v
-        name: package.json / Cargo.toml / tauri.conf.json (and tag) must agree
+        name: package.json / Cargo.toml / tauri.conf.json must agree
         run: |
           pkg=$(jq -r .version package.json)
           conf=$(jq -r .version src-tauri/tauri.conf.json)
@@ -46,11 +67,76 @@ jobs:
             echo "::error::Version mismatch: package.json=$pkg tauri.conf.json=$conf Cargo.toml=$cargo"
             exit 1
           fi
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$pkg" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match version v$pkg"
-            exit 1
-          fi
           echo "version=$pkg" >> "$GITHUB_OUTPUT"
+      - id: plan
+        name: Decide what to build and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+          EVENT: ${{ github.event_name }}
+          INPUT_RELEASE: ${{ inputs.release }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="v$VERSION"; build=true; release=false; prerelease=false
+          case "$EVENT" in
+            pull_request) build=false ;;
+            push)
+              release=true
+              if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+                echo "::error::Tag $GITHUB_REF_NAME does not match version $tag"; exit 1
+              fi ;;
+            workflow_dispatch)
+              if [ "$INPUT_RELEASE" = true ]; then
+                release=true
+                if [ -n "$INPUT_TAG" ]; then
+                  if [[ "$INPUT_TAG" != v*-* ]]; then
+                    echo "::error::Tag override is for test prereleases and must look like v0.0.0-ci-test"; exit 1
+                  fi
+                  tag=$INPUT_TAG
+                fi
+              fi ;;
+          esac
+          [[ "$tag" == *-* ]] && prerelease=true
+          if [ "$release" = true ]; then
+            # Already published -> nothing to do (cheap skip for pushes without a version bump).
+            draft=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null || echo none)
+            if [ "$draft" = false ]; then
+              echo "Release $tag is already published; skipping."; build=false; release=false
+            elif [ "$EVENT" = push ] && [ "$GITHUB_REF_TYPE" = branch ] && [ "$draft" = none ] \
+                 && git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+              echo "Tag $tag already exists without a release; skipping."; build=false; release=false
+            fi
+          fi
+          echo "tag=$tag build=$build release=$release prerelease=$prerelease"
+          { echo "tag=$tag"; echo "build=$build"; echo "release=$release"; echo "prerelease=$prerelease"; } >> "$GITHUB_OUTPUT"
+
+  prepare:
+    name: Create draft release
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.draft.outputs.id }}
+    steps:
+      - id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          PRE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Reusing draft $TAG from a previous failed run; removing old assets."
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' |
+              while read -r a; do gh release delete-asset "$TAG" "$a" --repo "$GITHUB_REPOSITORY" -y; done
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"
+          else
+            flags=(--draft --generate-notes --target "$GITHUB_SHA" --title "InfoHub $TAG")
+            [ "$PRE" = true ] && flags+=(--prerelease)
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" "${flags[@]}"
+          fi
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate -q ".[] | select(.tag_name == \"$TAG\") | .id" | head -1)
+          [ -n "$id" ] || { echo "::error::release id not found"; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
 
   pr-check:
     name: Linux compile check (PR)
@@ -78,8 +164,10 @@ jobs:
 
   build:
     name: Build ${{ matrix.name }}
-    if: github.event_name != 'pull_request'
-    needs: version
+    needs: [version, prepare]
+    if: >-
+      !cancelled() && needs.version.outputs.build == 'true' &&
+      (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -166,27 +254,23 @@ jobs:
             echo "Tauri updater signing key: present"
           fi
 
-      - name: Build (tag -> draft release)
-        if: github.ref_type == 'tag'
+      - name: Build and upload to the draft release
+        if: needs.version.outputs.release == 'true'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: ${{ github.ref_name }}
-          releaseBody: 'InfoHub 桌面客户端 ${{ github.ref_name }}。下载对应平台的安装包，首次打开填写服务地址即可。'
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.prepare.outputs.id }}
           args: ${{ matrix.args }}
 
-      - name: Build (manual run -> workflow artifacts)
-        if: github.ref_type != 'tag'
+      - name: Build
+        if: needs.version.outputs.release != 'true'
         uses: tauri-apps/tauri-action@v0
         with:
           args: ${{ matrix.args }}
 
-      - name: Upload artifacts
-        if: github.ref_type != 'tag'
+      - name: Upload workflow artifacts
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: infohub-${{ needs.version.outputs.version }}-${{ matrix.target }}
@@ -198,3 +282,20 @@ jobs:
             src-tauri/target/**/release/bundle/nsis/*.exe*
             src-tauri/target/**/release/bundle/deb/*.deb
             src-tauri/target/**/release/bundle/appimage/*.AppImage*
+
+  publish:
+    name: Publish release
+    needs: [version, prepare, build]
+    if: needs.version.outputs.release == 'true' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Flip draft to published (creates the tag)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          PRE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          latest=true; [ "$PRE" = true ] && latest=false
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest="$latest"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,isDraft,isPrerelease,assets \
+            -q '"\(.url) draft=\(.isDraft) prerelease=\(.isPrerelease) assets=\(.assets | length)"'
