@@ -9,6 +9,13 @@ import { useDraft } from '../../lib/useDraft';
 import { usePersistentDraft } from '../../lib/usePersistentDraft';
 import { DraftNotice } from '../DraftNotice';
 import { ReadingTools } from '../ReadingTools';
+import { useReadingWidth, type ReadingWidth } from '../../lib/readingWidth';
+
+const widthOptions: [ReadingWidth, string][] = [
+  ['narrow', '窄'],
+  ['standard', '标准'],
+  ['wide', '宽'],
+];
 export function KnowledgeView({
   item,
   onSaved,
@@ -64,6 +71,7 @@ export function KnowledgeView({
       setBusy(false);
     }
   }
+  const [readingWidth, setReadingWidth] = useReadingWidth();
   return (
     <div className="canvas article-canvas">
       <DraftNotice draft={persistence} />
@@ -96,6 +104,19 @@ export function KnowledgeView({
             <Code2 size={13} />
             Markdown
           </button>
+        </div>
+        <div className="segmented reading-width" role="group" aria-label="阅读宽度">
+          {widthOptions.map(([value, label]) => (
+            <button
+              key={value}
+              className={readingWidth === value ? 'active' : ''}
+              aria-pressed={readingWidth === value}
+              title={`阅读宽度：${label}`}
+              onClick={() => setReadingWidth(value)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
         <button className={dirty ? 'primary' : ''} disabled={!dirty || busy} onClick={() => void save()}>
           {dirty ? <Save size={13} /> : <Check size={13} />}
