@@ -27,6 +27,9 @@ nav .links{display:flex;gap:24px;margin-left:auto;font-size:14px}
 nav .links a{color:#a9b3cc;position:relative;transition:color .2s}
 nav .links a::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--cyan),var(--violet));transform:scaleX(0);transition:transform .25s}
 nav .links a:hover{color:#fff}nav .links a:hover::after{transform:scaleX(1)}
+nav .links a.gh{color:#cfe0ff;padding:4px 12px;border:1px solid rgba(140,170,255,.28);border-radius:980px}
+nav .links a.gh::after{display:none}
+nav .links a.gh:hover{color:#fff;border-color:var(--cyan);box-shadow:0 0 16px rgba(0,212,255,.25)}
 .btn{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:8px;padding:13px 26px;border-radius:980px;background:linear-gradient(120deg,#2f6bff,#8b5cf6 60%,#00d4ff);background-size:200% 100%;color:#fff;font-weight:600;font-size:15px;border:0;box-shadow:0 0 0 1px rgba(255,255,255,.12) inset,0 8px 30px var(--glow);animation:btnflow 6s ease-in-out infinite;transition:transform .2s,box-shadow .2s;isolation:isolate}
 .btn::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.55) 50%,transparent 70%);transform:translateX(-120%);animation:shimmer 3.2s ease-in-out infinite;z-index:-1}
 .btn:hover{transform:translateY(-2px);box-shadow:0 0 0 1px rgba(255,255,255,.2) inset,0 12px 40px rgba(139,92,246,.5)}
@@ -276,7 +279,7 @@ code{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.92em
 <nav>
 <div class="wrap">
 <a class="brand" href="#top"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#007aff"/><path d="M8 9h12M8 14h12M8 19h7" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg><span>新时代农民工笔记</span><small class="ptag">InfoHub</small></a>
-<div class="links"><a href="#features">功能</a><a href="#security">安全</a><a href="#desktop">桌面端</a><a href="#selfhost">自托管</a><a href="#faq">常见问题</a></div>
+<div class="links"><a href="https://github.com/zhuhedong/zhi-stack" target="_blank" rel="noopener noreferrer">功能</a><a href="https://github.com/zhuhedong/zhi-stack" target="_blank" rel="noopener noreferrer">安全</a><a href="https://github.com/zhuhedong/zhi-stack" target="_blank" rel="noopener noreferrer">桌面端</a><a href="#selfhost">自托管</a><a href="#faq">常见问题</a><a class="gh" href="https://github.com/zhuhedong/zhi-stack" target="_blank" rel="noopener noreferrer" title="GitHub 仓库">GitHub</a></div>
 </div>
 </nav>
 
@@ -455,7 +458,7 @@ code{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.92em
 </section>
 
 <footer>
-<div class="wrap"><span>新时代农民工笔记 · InfoHub 服务端 v{{VERSION}}</span><span>API 地址：<code>/api</code> · 健康检查 <code>/api/health</code></span></div>
+<div class="wrap"><span>新时代农民工笔记 · InfoHub 服务端 v{{VERSION}} · <a href="https://github.com/zhuhedong/zhi-stack" target="_blank" rel="noopener noreferrer">GitHub</a></span><span>API 地址：<code>/api</code> · 健康检查 <code>/api/health</code></span></div>
 <div class="icp"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">湘ICP备2023031880号-1</a></div>
 </footer>
 </body>

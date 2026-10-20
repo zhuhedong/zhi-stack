@@ -53,7 +53,7 @@ pub fn detect(headers: &HeaderMap) -> Os {
         "macos" => return Os::Mac,
         "windows" => return Os::Windows,
         "linux" | "chrome os" => return Os::Linux,
-        "android" | "ios" => return Os::Mobile,
+        "android" | "ios" | "ipados" => return Os::Mobile,
         _ => {}
     }
     detect_ua(&get("user-agent"))
@@ -61,9 +61,22 @@ pub fn detect(headers: &HeaderMap) -> Os {
 
 pub fn detect_ua(ua: &str) -> Os {
     let ua = ua.to_ascii_lowercase();
-    if ["iphone", "ipad", "android", "mobile"]
-        .iter()
-        .any(|k| ua.contains(k))
+    // Phones/tablets first. Classic iPad UAs contain "ipad"; iPhone contains
+    // "iphone" (and also "like mac os x", so order matters). iPadOS desktop
+    // mode sends a Macintosh Safari UA with no iPad token — that case is
+    // indistinguishable from a real Mac without client hints, so we fall
+    // through to Mac only when no mobile signal is present.
+    if [
+        "iphone",
+        "ipad",
+        "ipod",
+        "android",
+        "mobile",
+        "windows phone",
+        "opera mini",
+    ]
+    .iter()
+    .any(|k| ua.contains(k))
     {
         Os::Mobile
     } else if ua.contains("windows") {
@@ -181,6 +194,8 @@ mod tests {
     const LINUX: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0";
     const IPHONE: &str =
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
+    const IPAD: &str =
+        "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
     const ANDROID: &str = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36";
 
     #[test]
@@ -189,8 +204,17 @@ mod tests {
         assert_eq!(detect_ua(WIN), Os::Windows);
         assert_eq!(detect_ua(LINUX), Os::Linux);
         assert_eq!(detect_ua(IPHONE), Os::Mobile);
+        assert_eq!(detect_ua(IPAD), Os::Mobile);
         assert_eq!(detect_ua(ANDROID), Os::Mobile);
         assert_eq!(detect_ua("curl/8.0"), Os::Unknown);
+    }
+
+    #[test]
+    fn client_hint_ipados_is_mobile() {
+        let mut h = HeaderMap::new();
+        h.insert("user-agent", MAC.parse().unwrap());
+        h.insert("sec-ch-ua-platform", "\"iPadOS\"".parse().unwrap());
+        assert_eq!(detect(&h), Os::Mobile);
     }
 
     #[test]

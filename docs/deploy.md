@@ -63,6 +63,7 @@ curl -fsS http://127.0.0.1:${INFOHUB_PORT:-3210}/api/health
 ```
 
 - 密码仍为 `.env.example` 中的占位值时，服务拒绝启动并在日志里说明原因。
+- `bundled` 模式下 `POSTGRES_PASSWORD` 会原样拼进 `DATABASE_URL`，请只用字母和数字（推荐 `openssl rand -hex 24`）；含 `@`、`#`、`:` 等特殊字符会导致连不上数据库。
 - 自带 PG 不再映射宿主机 5432 端口。需要本机调试时，自己建 `compose.override.yaml` 加 `ports: ['127.0.0.1:5432:5432']`。
 - 宿主机端口由 `INFOHUB_BIND_IP` / `INFOHUB_PORT` 决定；容器内固定 `0.0.0.0:3210`、`/app/dist`、`/data/files`，不要改。
 - 启动日志会打印一份不含密钥的“生效配置”，排查配置问题先看这里。

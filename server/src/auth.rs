@@ -94,16 +94,26 @@ struct Attempts {
     failures: u32,
     blocked_until: Option<Instant>,
     last: Instant,
+    /// Concurrent verify/unlock attempts holding a reserved slot.
+    in_flight: u32,
 }
 /// Per-client failed-password limiter with exponential backoff. Successful
 /// verification clears the client's record, and one client's failures never
 /// block another client.
+///
+/// Callers must [`Limiter::begin`] before the expensive Argon2 derive and
+/// [`Limiter::end_fail`] / [`Limiter::end_succeed`] / [`Limiter::cancel`]
+/// afterwards so concurrent requests cannot bypass the failure count.
 #[derive(Default)]
 pub struct Limiter {
     clients: HashMap<IpAddr, Attempts>,
 }
 const FREE_FAILURES: u32 = 5;
 const MAX_BACKOFF: Duration = Duration::from_secs(15 * 60);
+/// At most one password verify in flight per client IP.
+const MAX_IN_FLIGHT: u32 = 1;
+/// Global cap on concurrent Argon2id derives (shared via [`crate::AppState`]).
+pub const ARGON2_PERMITS: usize = 2;
 impl Limiter {
     pub fn check(&mut self, ip: IpAddr, now: Instant) -> std::result::Result<(), Duration> {
         match self.clients.get(&ip).and_then(|a| a.blocked_until) {
@@ -111,29 +121,70 @@ impl Limiter {
             _ => Ok(()),
         }
     }
-    pub fn fail(&mut self, ip: IpAddr, now: Instant) {
+    fn entry(&mut self, ip: IpAddr, now: Instant) -> &mut Attempts {
         if self.clients.len() >= 4096 {
-            self.clients
-                .retain(|_, a| now.duration_since(a.last) < Duration::from_secs(3600));
+            self.clients.retain(|_, a| {
+                now.duration_since(a.last) < Duration::from_secs(3600) || a.in_flight > 0
+            });
         }
         let entry = self.clients.entry(ip).or_insert(Attempts {
             failures: 0,
             blocked_until: None,
             last: now,
+            in_flight: 0,
         });
-        if now.duration_since(entry.last) > Duration::from_secs(3600) {
+        if entry.in_flight == 0 && now.duration_since(entry.last) > Duration::from_secs(3600) {
             entry.failures = 0;
+            entry.blocked_until = None;
         }
-        entry.failures += 1;
         entry.last = now;
+        entry
+    }
+    /// Reserve a verify slot under the lock. Rejects if blocked or another
+    /// attempt from this IP is already in flight.
+    pub fn begin(&mut self, ip: IpAddr, now: Instant) -> std::result::Result<(), Duration> {
+        self.check(ip, now)?;
+        let entry = self.entry(ip, now);
+        if entry.in_flight >= MAX_IN_FLIGHT {
+            return Err(Duration::from_secs(1));
+        }
+        entry.in_flight += 1;
+        Ok(())
+    }
+    fn release_in_flight(&mut self, ip: IpAddr) {
+        let remove = match self.clients.get_mut(&ip) {
+            Some(entry) => {
+                entry.in_flight = entry.in_flight.saturating_sub(1);
+                entry.in_flight == 0 && entry.failures == 0 && entry.blocked_until.is_none()
+            }
+            None => false,
+        };
+        if remove {
+            self.clients.remove(&ip);
+        }
+    }
+    /// Drop the reservation without counting a failure (e.g. validation error).
+    pub fn cancel(&mut self, ip: IpAddr) {
+        self.release_in_flight(ip);
+    }
+    pub fn fail(&mut self, ip: IpAddr, now: Instant) {
+        let entry = self.entry(ip, now);
+        entry.failures += 1;
         if entry.failures >= FREE_FAILURES {
             let exp = (entry.failures - FREE_FAILURES).min(10);
             let delay = Duration::from_secs(1u64 << exp).min(MAX_BACKOFF);
             entry.blocked_until = Some(now + delay);
         }
     }
+    pub fn end_fail(&mut self, ip: IpAddr, now: Instant) {
+        self.release_in_flight(ip);
+        self.fail(ip, now);
+    }
     pub fn succeed(&mut self, ip: IpAddr) {
         self.clients.remove(&ip);
+    }
+    pub fn end_succeed(&mut self, ip: IpAddr) {
+        self.succeed(ip);
     }
 }
 fn too_many(wait: Duration) -> AppError {
@@ -186,8 +237,29 @@ pub(crate) async fn verify(state: &AppState, ip: ClientIp, password: String) -> 
         .login_limiter
         .lock()
         .await
-        .check(ip.0, Instant::now())
+        .begin(ip.0, Instant::now())
         .map_err(too_many)?;
+    match verify_reserved(state, password).await {
+        Ok(key) => {
+            state.login_limiter.lock().await.end_succeed(ip.0);
+            Ok(key)
+        }
+        Err(err) if err.0 == StatusCode::UNAUTHORIZED => {
+            state
+                .login_limiter
+                .lock()
+                .await
+                .end_fail(ip.0, Instant::now());
+            Err(err)
+        }
+        Err(err) => {
+            state.login_limiter.lock().await.cancel(ip.0);
+            Err(err)
+        }
+    }
+}
+
+async fn verify_reserved(state: &AppState, password: String) -> Result<VaultKey> {
     if password.len() > 1024 {
         return Err(AppError::bad("密码过长"));
     }
@@ -196,12 +268,15 @@ pub(crate) async fn verify(state: &AppState, ip: ClientIp, password: String) -> 
             .fetch_optional(&state.db)
             .await?;
     let (salt, verifier) = config.ok_or_else(|| AppError::bad("请先创建主密码"))?;
+    let _permit = state
+        .argon2_limit
+        .acquire()
+        .await
+        .expect("argon2 semaphore is never closed");
     let key = crypto::derive(password, salt).await?;
     if crypto::decrypt(&key, &verifier, "infohub-vault-v1").is_err() {
-        state.login_limiter.lock().await.fail(ip.0, Instant::now());
         return Err(AppError(StatusCode::UNAUTHORIZED, "主密码不正确".into()));
     }
-    state.login_limiter.lock().await.succeed(ip.0);
     Ok(key)
 }
 
@@ -298,7 +373,13 @@ pub async fn setup(
     }
     let mut salt = vec![0; 16];
     rand::thread_rng().fill_bytes(&mut salt);
+    let _permit = state
+        .argon2_limit
+        .acquire()
+        .await
+        .expect("argon2 semaphore is never closed");
     let key = crypto::derive(input.password, salt.clone()).await?;
+    drop(_permit);
     let verifier = crypto::encrypt(&key, b"InfoHub vault verification", "infohub-vault-v1")?;
     let result = sqlx::query(
         "INSERT INTO vault_config(id, salt, verifier) VALUES (1, $1, $2) ON CONFLICT DO NOTHING",
@@ -450,6 +531,43 @@ mod tests {
         assert!(wait <= MAX_BACKOFF && wait > Duration::from_secs(60));
         l.succeed(attacker);
         assert!(l.check(attacker, now).is_ok());
+    }
+
+    #[test]
+    fn begin_serializes_in_flight_attempts_per_client() {
+        let mut l = Limiter::default();
+        let now = Instant::now();
+        let attacker: IpAddr = "203.0.113.9".parse().unwrap();
+        let owner: IpAddr = "198.51.100.7".parse().unwrap();
+        l.begin(attacker, now).unwrap();
+        // Second concurrent attempt from the same IP is rejected while the
+        // first reservation is held — this closes the check-then-Argon2 race.
+        assert!(l.begin(attacker, now).is_err());
+        assert!(l.begin(owner, now).is_ok());
+        l.cancel(attacker);
+        for _ in 0..FREE_FAILURES {
+            l.begin(attacker, now).unwrap();
+            l.end_fail(attacker, now);
+        }
+        assert!(l.check(attacker, now).is_err());
+        assert!(l.begin(attacker, now).is_err());
+        // Other clients are unaffected.
+        l.end_succeed(owner);
+        assert!(l.begin(owner, now).is_ok());
+        l.end_succeed(owner);
+    }
+
+    #[test]
+    fn cancel_does_not_count_as_failure() {
+        let mut l = Limiter::default();
+        let now = Instant::now();
+        let ip: IpAddr = "203.0.113.10".parse().unwrap();
+        for _ in 0..FREE_FAILURES {
+            l.begin(ip, now).unwrap();
+            l.cancel(ip);
+        }
+        assert!(l.begin(ip, now).is_ok());
+        l.end_succeed(ip);
     }
     #[test]
     fn forwarded_for_is_only_trusted_from_configured_proxies() {

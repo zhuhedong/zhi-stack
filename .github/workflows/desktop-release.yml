@@ -35,10 +35,11 @@ on:
 permissions:
   contents: write
 
-# A main push and a tag push of the same commit (same version) run one after the
-# other; the second one sees the published release and skips.
+# Non-PR runs share one group so a second main push waits (cancel-in-progress
+# false) instead of racing the same version draft and wiping assets. PRs still
+# cancel superseded runs on the same branch.
 concurrency:
-  group: desktop-release-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.event_name == 'pull_request' && format('desktop-release-pr-{0}', github.ref) || 'desktop-release' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -57,14 +58,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: v
-        name: package.json / Cargo.toml / tauri.conf.json must agree
+        name: package.json / server + src-tauri Cargo.toml / tauri.conf.json must agree
         run: |
           pkg=$(jq -r .version package.json)
           conf=$(jq -r .version src-tauri/tauri.conf.json)
           cargo=$(sed -n 's/^version *= *"\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)
-          echo "package.json=$pkg tauri.conf.json=$conf src-tauri/Cargo.toml=$cargo"
-          if [ "$pkg" != "$conf" ] || [ "$pkg" != "$cargo" ]; then
-            echo "::error::Version mismatch: package.json=$pkg tauri.conf.json=$conf Cargo.toml=$cargo"
+          server=$(sed -n 's/^version *= *"\(.*\)"/\1/p' server/Cargo.toml | head -1)
+          echo "package.json=$pkg tauri.conf.json=$conf src-tauri/Cargo.toml=$cargo server/Cargo.toml=$server"
+          if [ "$pkg" != "$conf" ] || [ "$pkg" != "$cargo" ] || [ "$pkg" != "$server" ]; then
+            echo "::error::Version mismatch: package.json=$pkg tauri.conf.json=$conf src-tauri/Cargo.toml=$cargo server/Cargo.toml=$server"
             exit 1
           fi
           echo "version=$pkg" >> "$GITHUB_OUTPUT"
@@ -297,8 +299,14 @@ jobs:
           set -euo pipefail
           mkdir -p stable && cd stable
           copy() { # <glob> <stable name>
-            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$1" --clobber
-            f=$(ls $1 | head -n1); mv "$f" "$2"
+            local pattern=$1 dest=$2
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$pattern" --clobber
+            mapfile -t matches < <(compgen -G "$pattern" || true)
+            if [ "${#matches[@]}" -ne 1 ]; then
+              echo "::error::expected exactly 1 asset matching $pattern, got ${#matches[@]}: ${matches[*]-}"
+              exit 1
+            fi
+            mv "${matches[0]}" "$dest"
           }
           copy '*_aarch64.dmg'      InfoHub_macos_aarch64.dmg
           copy '*_x64.dmg'          InfoHub_macos_x64.dmg
