@@ -1,2 +1,3 @@
 export const isDesktop = '__TAURI_INTERNALS__' in window;
-export const shortcutModifier = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
+export const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+export const shortcutModifier = isMac ? '⌘' : 'Ctrl';

@@ -2282,3 +2282,46 @@ fieldset.form-fields {
 .auth-app-icon {
   margin-bottom: var(--space-md);
 }
+
+/* Desktop shell: the app header doubles as the window title bar. */
+.desktop-shell .app-header,
+.desktop-shell .auth-brand {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.desktop-mac .app-header,
+.desktop-mac .auth-brand {
+  padding-left: 80px; /* room for the native traffic lights */
+}
+.desktop-frameless .app-header,
+.desktop-frameless .auth-brand {
+  padding-right: 138px; /* room for the window controls */
+}
+.window-controls {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: var(--app-header-height);
+  display: flex;
+  z-index: 2147483000;
+}
+.window-controls button {
+  width: 46px;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.window-controls button:hover {
+  background: var(--color-list);
+  color: var(--color-strong);
+}
+.window-controls button.close:hover {
+  background: #e81123;
+  color: #fff;
+}

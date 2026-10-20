@@ -103,10 +103,10 @@ export function AuthScreen({
   }
   return (
     <div className="auth-page">
-      <header className="auth-brand">
+      <header className="auth-brand" data-tauri-drag-region>
         <BrandIcon />
-        <strong>InfoHub</strong>
-        <span>开发者数字工作台</span>
+        <strong data-tauri-drag-region>InfoHub</strong>
+        <span data-tauri-drag-region>开发者数字工作台</span>
       </header>
       <main className="auth-layout">
         <div className="auth-intro">
