@@ -2630,3 +2630,17 @@ input[type='checkbox'] {
 .markdown .code-frame + * {
   margin-top: 17px;
 }
+
+/* Dark theme adjustments (PR-E) */
+:root[data-theme='dark'] .ambient-light {
+  mix-blend-mode: screen;
+}
+:root[data-theme='dark'] input[type='range']::-webkit-slider-thumb {
+  background: #d1d1d6;
+}
+:root[data-theme='dark'] input[type='range']::-moz-range-thumb {
+  background: #d1d1d6;
+}
+.theme-toggle svg {
+  display: block;
+}

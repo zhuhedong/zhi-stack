@@ -89,3 +89,95 @@
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 }
+
+/* Dark theme: applied when <html data-theme="dark"> (explicit choice or the
+ * system preference, resolved by src/lib/theme.ts before first paint). */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-paper: #161618;
+  --color-window: rgba(30, 30, 32, 0.72);
+  --color-sidebar: rgba(28, 28, 30, 0.62);
+  --color-list: rgba(32, 32, 35, 0.6);
+  --color-panel: rgba(44, 44, 48, 0.5);
+  --color-raised: rgba(255, 255, 255, 0.08);
+  --color-input: rgba(255, 255, 255, 0.07);
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-hover: rgba(255, 255, 255, 0.1);
+  --color-border-hover: rgba(255, 255, 255, 0.24);
+  --color-text: rgba(255, 255, 255, 0.86);
+  --color-strong: #f5f5f7;
+  --color-muted: rgba(255, 255, 255, 0.62);
+  --color-faint: rgba(255, 255, 255, 0.42);
+  --color-accent: #0a84ff;
+  --color-accent-hover: #409cff;
+  --color-blue-text: #64b0ff;
+  --color-blue-tint: rgba(10, 132, 255, 0.18);
+  --color-good: #30d158;
+  --color-good-ink: #6ee08d;
+  --color-green-tint: rgba(48, 209, 88, 0.16);
+  --color-amber: #ffd60a;
+  --color-amber-ink: #ffd60a;
+  --color-amber-tint: rgba(255, 214, 10, 0.14);
+  --color-danger: #ff453a;
+  --color-danger-ink: #ff7b72;
+  --color-rose-tint: rgba(255, 69, 58, 0.16);
+  --color-backdrop: rgba(0, 0, 0, 0.5);
+  --color-dialog: rgba(36, 36, 40, 0.94);
+  --color-wallpaper-indigo: rgba(99, 102, 241, 0.16);
+  --color-wallpaper-sky: rgba(14, 165, 233, 0.12);
+  --color-wallpaper-emerald: rgba(16, 185, 129, 0.08);
+  --color-reading-surface: #1e1e21;
+  --color-reading-border: rgba(255, 255, 255, 0.08);
+  --shadow-reading: 0 1px 3px rgba(0, 0, 0, 0.3), 0 10px 32px rgba(0, 0, 0, 0.35);
+  --color-code-surface: rgba(255, 255, 255, 0.045);
+  --shadow-window: 0 20px 50px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-primary: 0 2px 8px rgba(10, 132, 255, 0.35);
+}
+/* Before the theme script runs, follow the OS (no light flash in dark mode). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --color-paper: #161618;
+    --color-window: rgba(30, 30, 32, 0.72);
+    --color-sidebar: rgba(28, 28, 30, 0.62);
+    --color-list: rgba(32, 32, 35, 0.6);
+    --color-panel: rgba(44, 44, 48, 0.5);
+    --color-raised: rgba(255, 255, 255, 0.08);
+    --color-input: rgba(255, 255, 255, 0.07);
+    --color-border: rgba(255, 255, 255, 0.12);
+    --color-line: rgba(255, 255, 255, 0.07);
+    --color-hover: rgba(255, 255, 255, 0.1);
+    --color-border-hover: rgba(255, 255, 255, 0.24);
+    --color-text: rgba(255, 255, 255, 0.86);
+    --color-strong: #f5f5f7;
+    --color-muted: rgba(255, 255, 255, 0.62);
+    --color-faint: rgba(255, 255, 255, 0.42);
+    --color-accent: #0a84ff;
+    --color-accent-hover: #409cff;
+    --color-blue-text: #64b0ff;
+    --color-blue-tint: rgba(10, 132, 255, 0.18);
+    --color-good: #30d158;
+    --color-good-ink: #6ee08d;
+    --color-green-tint: rgba(48, 209, 88, 0.16);
+    --color-amber: #ffd60a;
+    --color-amber-ink: #ffd60a;
+    --color-amber-tint: rgba(255, 214, 10, 0.14);
+    --color-danger: #ff453a;
+    --color-danger-ink: #ff7b72;
+    --color-rose-tint: rgba(255, 69, 58, 0.16);
+    --color-backdrop: rgba(0, 0, 0, 0.5);
+    --color-dialog: rgba(36, 36, 40, 0.94);
+    --color-wallpaper-indigo: rgba(99, 102, 241, 0.16);
+    --color-wallpaper-sky: rgba(14, 165, 233, 0.12);
+    --color-wallpaper-emerald: rgba(16, 185, 129, 0.08);
+    --color-reading-surface: #1e1e21;
+    --color-reading-border: rgba(255, 255, 255, 0.08);
+    --shadow-reading: 0 1px 3px rgba(0, 0, 0, 0.3), 0 10px 32px rgba(0, 0, 0, 0.35);
+    --color-code-surface: rgba(255, 255, 255, 0.045);
+    --shadow-window: 0 20px 50px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-primary: 0 2px 8px rgba(10, 132, 255, 0.35);
+  }
+}
