@@ -3,6 +3,7 @@ pub mod auth;
 pub mod backup;
 pub mod config;
 pub mod crypto;
+pub mod download;
 pub mod error;
 pub mod files;
 pub mod ingest;
@@ -93,7 +94,7 @@ impl AppState {
 pub const WEB_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 const LANDING_TEMPLATE: &str = include_str!("landing.html");
 
-fn html_escape(value: &str) -> String {
+pub(crate) fn html_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -272,7 +273,43 @@ pub fn router(state: AppState) -> Router {
                 .not_found_service(ServeFile::new(format!("{frontend}/index.html"))),
         ),
         config::WebUi::Landing => {
-            let page = landing_page(state.settings.landing_download_url.as_deref());
+            let page = landing_page(Some(
+                state
+                    .settings
+                    .landing_download_url
+                    .as_deref()
+                    .unwrap_or("/download"),
+            ));
+            let base = state.settings.download_base_url.clone();
+            let dl =
+                move |headers: axum::http::HeaderMap,
+                      axum::extract::RawQuery(q): axum::extract::RawQuery| {
+                    let base = base.clone();
+                    async move {
+                        let forced = q.as_deref().and_then(|q| {
+                            q.split('&')
+                                .find_map(|kv| kv.strip_prefix("os="))
+                                .and_then(download::Os::from_query)
+                        });
+                        let os = forced.unwrap_or_else(|| download::detect(&headers));
+                        (
+                            [
+                                (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+                                (
+                                    header::VARY,
+                                    HeaderValue::from_static(
+                                        "User-Agent, Sec-CH-UA-Platform, Sec-CH-UA-Mobile",
+                                    ),
+                                ),
+                                (
+                                    header::HeaderName::from_static("accept-ch"),
+                                    HeaderValue::from_static("Sec-CH-UA-Platform"),
+                                ),
+                            ],
+                            axum::response::Html(download::page(os, &base)),
+                        )
+                    }
+                };
             let serve = move || {
                 let page = page.clone();
                 async move {
@@ -285,6 +322,7 @@ pub fn router(state: AppState) -> Router {
             Router::new()
                 .route("/", get(serve.clone()))
                 .route("/index.html", get(serve))
+                .route("/download", get(dl))
                 .fallback(not_found)
         }
         config::WebUi::Off => Router::new().fallback(not_found),
@@ -439,6 +477,18 @@ mod web_ui_tests {
             assert_eq!(get(&app, path).await.0, StatusCode::NOT_FOUND, "{path}");
         }
         assert_api_routed(&app).await;
+        let (s, kind, b) = get(&app, "/download").await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(kind.starts_with("text/html") && !b.contains("<script"));
+        let default = app_default_landing(dir.path());
+        let (_, _, b) = get(&default, "/").await;
+        assert!(b.contains(r#"href="/download""#));
+        let (_, _, b) = get(&default, "/download?os=win").await;
+        assert!(b.contains("InfoHub_windows_x64-setup.exe\" rel"));
+    }
+
+    fn app_default_landing(frontend: &str) -> Router {
+        app(config::WebUi::Landing, frontend, None)
     }
 
     #[tokio::test]
