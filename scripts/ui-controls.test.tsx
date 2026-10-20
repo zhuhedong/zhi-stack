@@ -63,3 +63,32 @@ test('custom select: Escape closes, typeahead jumps', async () => {
   expect(document.querySelector('[role=listbox]')).toBeNull();
   expect(log).toEqual([]);
 });
+
+import { FilterTabs } from '../src/components/FilterTabs';
+function TabsDemo({ log }: { log: string[] }) {
+  const [v, setV] = useState('all');
+  return (
+    <FilterTabs
+      value={v}
+      onChange={(x) => (log.push(x), setV(x))}
+      tabs={[
+        { value: 'all', label: '全部' },
+        { value: 'http', label: 'REST' },
+        { value: 'vector', label: 'AI 向量' },
+      ]}
+    />
+  );
+}
+test('filter tabs: tablist semantics and arrow/Home/End navigation', async () => {
+  const log: string[] = [];
+  await act(async () => root.render(<TabsDemo log={log} />));
+  const list = host.querySelector('[role=tablist]')!;
+  expect(host.querySelectorAll('[role=tab]').length).toBe(3);
+  expect(host.querySelector('.list-filter .selected')?.textContent).toBe('全部');
+  key(list, 'ArrowRight');
+  key(list, 'End');
+  key(list, 'ArrowRight');
+  key(list, 'ArrowLeft');
+  expect(log).toEqual(['http', 'vector', 'all', 'vector']);
+  expect(host.querySelector('[aria-selected=true]')?.textContent).toBe('AI 向量');
+});
