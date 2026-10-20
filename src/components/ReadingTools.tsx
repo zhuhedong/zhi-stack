@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Bookmark, Check, Save } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { usePersistentDraft } from '../lib/usePersistentDraft';
@@ -96,6 +96,7 @@ export function ReadingTools({ item, onDirty }: { item: Item; onDirty: (dirty: b
           max={100}
           step={5}
           value={state.progress}
+          style={{ '--fill': `${state.progress}%` } as CSSProperties}
           onChange={(e) => {
             setState({ ...state, progress: Number(e.target.value) });
             setDirty(true);

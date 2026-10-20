@@ -1,3 +1,4 @@
+import { Select } from './ui/Select';
 import { Inbox, LoaderCircle, Search, Star, X } from 'lucide-react';
 import { useState, type RefObject } from 'react';
 import { categories, categoryName, dateLabel, type Dimension, type Item, type Pillar } from '../types';
@@ -100,7 +101,7 @@ export function ListPanel({
           搜索全部资产分类{loading && <LoaderCircle size={12} className="spin" />}
         </label>
         <div className="library-options">
-          <select
+          <Select
             aria-label="资料视图"
             value={view}
             onChange={(e) => {
@@ -113,13 +114,13 @@ export function ListPanel({
             <option value="frequent">常用资料</option>
             <option value="later">稍后读</option>
             <option value="archived">已归档</option>
-          </select>
-          <select aria-label="排序方式" value={sort} onChange={(e) => onSort(e.target.value)}>
+          </Select>
+          <Select aria-label="排序方式" value={sort} onChange={(e) => onSort(e.target.value)}>
             <option value="relevance">相关度</option>
             <option value="updated">最近更新</option>
             <option value="created">最近收录</option>
             <option value="title">标题</option>
-          </select>
+          </Select>
           <button
             onClick={() => {
               setSelecting((v) => !v);
