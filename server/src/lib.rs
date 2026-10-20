@@ -454,6 +454,9 @@ mod web_ui_tests {
         );
         assert!(page.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))));
         assert!(!page.contains("{{") && !page.contains("<script"));
+        assert!(page.contains("<title>新时代农民工笔记</title>"));
+        assert!(page.contains("湘ICP备2023031880号-1"));
+        assert!(page.contains(r#"href="https://beian.miit.gov.cn/""#));
     }
 
     #[tokio::test]
