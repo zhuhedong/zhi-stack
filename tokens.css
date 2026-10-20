@@ -36,10 +36,18 @@
   --color-dialog: rgba(255, 255, 255, 0.9);
   --color-transparent: transparent;
   --color-white: #fff;
-  --color-wallpaper-indigo: rgba(165, 180, 252, 0.6);
-  --color-wallpaper-sky: rgba(125, 211, 252, 0.6);
-  --color-wallpaper-pink: rgba(249, 168, 212, 0.6);
-  --color-wallpaper-emerald: rgba(167, 243, 208, 0.6);
+  /* Ambient wallpaper: kept subtle so long reading stays calm. */
+  --color-wallpaper-indigo: rgba(165, 180, 252, 0.22);
+  --color-wallpaper-sky: rgba(125, 211, 252, 0.2);
+  --color-wallpaper-pink: rgba(249, 168, 212, 0);
+  --color-wallpaper-emerald: rgba(167, 243, 208, 0.16);
+  /* Reading surface: solid paper behind long-form text. */
+  --color-reading-surface: #fffdfa;
+  --color-reading-border: rgba(0, 0, 0, 0.07);
+  --shadow-reading: 0 1px 3px rgba(0, 0, 0, 0.04), 0 8px 28px rgba(0, 0, 0, 0.05);
+  --color-code-surface: rgba(0, 0, 0, 0.035);
+  --color-window-close: #e81123;
+  --color-window-close-ink: #fff;
   --font-body:
     -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-display: var(--font-body);
@@ -64,6 +72,9 @@
   --sidebar-width: 208px;
   --list-width: 320px;
   --canvas-width: 768px;
+  --reading-width: 820px;
+  --text-reading: 15px;
+  --leading-reading: 1.8;
   --blur-window: 64px;
   --blur-sidebar: 12px;
   --blur-panel: 24px;

@@ -2322,6 +2322,51 @@ fieldset.form-fields {
   color: var(--color-strong);
 }
 .window-controls button.close:hover {
-  background: #e81123;
-  color: #fff;
+  background: var(--color-window-close);
+  color: var(--color-window-close-ink);
+}
+
+/* Reading surface (PR-A): solid paper card, adjustable width, calmer type. */
+:root[data-reading-width='narrow'] {
+  --reading-width: 680px;
+}
+:root[data-reading-width='wide'] {
+  --reading-width: 1040px;
+}
+.article-canvas {
+  max-width: calc(var(--reading-width) + 2 * var(--space-2xl));
+  margin: var(--space-xl) auto;
+  background: var(--color-reading-surface);
+  border: 1px solid var(--color-reading-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-reading);
+}
+.article-canvas .markdown {
+  font-size: var(--text-reading);
+  line-height: var(--leading-reading);
+}
+.article-canvas .markdown pre {
+  background: var(--color-code-surface);
+  line-height: 1.65;
+  font-size: 12.5px;
+}
+.reading-width button {
+  min-width: 34px;
+  justify-content: center;
+}
+.ambient-light {
+  animation: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ambient-motion='on'] .ambient-light {
+    animation: ambient-drift 36s var(--ease-in-out) infinite alternate;
+  }
+}
+@media (max-width: 650px) {
+  .article-canvas {
+    margin: 0;
+    border-radius: 0;
+    border-width: 0;
+    box-shadow: none;
+  }
 }
