@@ -2538,3 +2538,50 @@ input[type='range']:disabled {
 input[type='checkbox'] {
   accent-color: var(--color-accent);
 }
+
+/* Filter tabs (PR-C): horizontal scroll + fade masks + "more" menu */
+.filter-tabs {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.filter-tabs .list-filter {
+  flex: 1;
+  min-width: 0;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  padding-bottom: 0;
+}
+.filter-tabs .list-filter::-webkit-scrollbar {
+  display: none;
+}
+.filter-tabs .list-filter button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.filter-tabs[data-overflow='end'] .list-filter {
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+.filter-tabs[data-overflow='start'] .list-filter {
+  mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent);
+}
+.filter-tabs[data-overflow='both'] .list-filter {
+  mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+}
+.filter-more {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  min-height: 22px;
+  padding: 2px 6px;
+  border: 0;
+  background: var(--color-raised);
+  color: var(--color-muted);
+}
+.filter-more[aria-expanded='true'] {
+  color: var(--color-strong);
+}

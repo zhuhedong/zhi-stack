@@ -1,3 +1,4 @@
+import { FilterTabs } from './FilterTabs';
 import { Select } from './ui/Select';
 import { Inbox, LoaderCircle, Search, Star, X } from 'lucide-react';
 import { useState, type RefObject } from 'react';
@@ -81,21 +82,14 @@ export function ListPanel({
             </button>
           )}
         </div>
-        <div className="list-filter">
-          <button className={category === 'all' ? 'selected' : ''} onClick={() => onCategory('all')}>
-            全部
-          </button>
-          {Object.entries(options).map(([v, l]) => (
-            <button
-              key={v}
-              disabled={global}
-              className={category === v ? 'selected' : ''}
-              onClick={() => onCategory(v)}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
+        <FilterTabs
+          value={category}
+          onChange={onCategory}
+          tabs={[
+            { value: 'all', label: '全部' },
+            ...Object.entries(options).map(([v, l]) => ({ value: v, label: l, disabled: global })),
+          ]}
+        />
         <label className="search-scope">
           <input type="checkbox" checked={global} onChange={(e) => onGlobal(e.target.checked)} />
           搜索全部资产分类{loading && <LoaderCircle size={12} className="spin" />}
