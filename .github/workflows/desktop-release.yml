@@ -134,7 +134,7 @@ jobs:
             [ "$PRE" = true ] && flags+=(--prerelease)
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" "${flags[@]}"
           fi
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate -q ".[] | select(.tag_name == \"$TAG\") | .id" | head -1)
+          id=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json databaseId -q .databaseId)
           [ -n "$id" ] || { echo "::error::release id not found"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
