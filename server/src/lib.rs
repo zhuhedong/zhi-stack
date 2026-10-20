@@ -299,6 +299,10 @@ pub fn router(state: AppState) -> Router {
                             [
                                 (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
                                 (
+                                    header::CONTENT_SECURITY_POLICY,
+                                    HeaderValue::from_static(download::CSP),
+                                ),
+                                (
                                     header::VARY,
                                     HeaderValue::from_static(
                                         "User-Agent, Sec-CH-UA-Platform, Sec-CH-UA-Mobile",
@@ -326,6 +330,21 @@ pub fn router(state: AppState) -> Router {
                 .route("/", get(serve.clone()))
                 .route("/index.html", get(serve))
                 .route("/download", get(dl))
+                .route(
+                    "/download.js",
+                    get(|| async {
+                        (
+                            [
+                                (
+                                    header::CONTENT_TYPE,
+                                    HeaderValue::from_static("text/javascript; charset=utf-8"),
+                                ),
+                                (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+                            ],
+                            download::SCRIPT,
+                        )
+                    }),
+                )
                 .fallback(not_found)
         }
         config::WebUi::Off => Router::new().fallback(not_found),
@@ -482,7 +501,36 @@ mod web_ui_tests {
         assert_api_routed(&app).await;
         let (s, kind, b) = get(&app, "/download").await;
         assert_eq!(s, StatusCode::OK);
-        assert!(kind.starts_with("text/html") && !b.contains("<script"));
+        // Only the external same-origin script; no inline code.
+        assert!(kind.starts_with("text/html"));
+        assert_eq!(b.matches("<script").count(), 1);
+        assert!(b.contains(r#"<script src="/download.js" defer></script>"#));
+        let csp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/download")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .headers()
+            .get(header::CONTENT_SECURITY_POLICY)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(csp, download::CSP);
+        assert!(
+            csp.contains("script-src 'self';")
+                && csp.contains("connect-src 'self' https://api.github.com;")
+        );
+        let (s, kind, js) = get(&app, "/download.js").await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(kind.starts_with("text/javascript") && js.contains("api.github.com"));
+        let (_, _, landing) = get(&app, "/").await;
+        assert!(!landing.contains("<script"));
         let default = app_default_landing(dir.path());
         let (_, _, b) = get(&default, "/").await;
         assert!(b.contains(r#"href="/download""#));

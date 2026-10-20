@@ -153,7 +153,7 @@ pub fn page(os: Os, base: &str) -> String {
                 ""
             };
             format!(
-                r#"<p class="detect">检测到你正在使用 <b>{}</b></p><a class="btn big" href="{}" rel="noopener noreferrer">下载 {} <small>v{version}</small></a>{extra}"#,
+                r#"<p class="detect">检测到你正在使用 <b>{}</b></p><a class="btn big" href="{}" rel="noopener noreferrer">下载 {} <small data-live-version>v{version}</small></a>{extra}"#,
                 os.label(),
                 url(a),
                 a.title
@@ -184,6 +184,15 @@ pub fn page(os: Os, base: &str) -> String {
 }
 
 const TEMPLATE: &str = include_str!("download.html");
+
+/// Script served at `/download.js`: refreshes the shown version from the
+/// GitHub API in the visitor's browser, keeping the server-rendered value on
+/// any failure.
+pub const SCRIPT: &str = include_str!("download.js");
+
+/// CSP for `/download` only: [`crate::WEB_CSP`] plus `connect-src
+/// https://api.github.com` for the live version lookup.
+pub const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' https://api.github.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
 #[cfg(test)]
 mod tests {
@@ -246,7 +255,9 @@ mod tests {
             assert_eq!(p.matches("class=\"row glass").count(), 6);
         }
         assert!(p.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))));
-        assert!(!p.contains("{{") && !p.contains("<script"));
+        assert!(p.contains(r#"<script src="/download.js" defer></script>"#));
+        assert!(p.contains("data-live-version"));
+        assert!(!p.contains("{{") && p.matches("<script").count() == 1);
         assert!(p.contains("湘ICP备2023031880号-1"));
     }
 }
