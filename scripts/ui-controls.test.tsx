@@ -92,3 +92,30 @@ test('filter tabs: tablist semantics and arrow/Home/End navigation', async () =>
   expect(log).toEqual(['http', 'vector', 'all', 'vector']);
   expect(host.querySelector('[aria-selected=true]')?.textContent).toBe('AI 向量');
 });
+
+import { Markdown } from '../src/components/Markdown';
+import { CodeBlock } from '../src/components/CodeBlock';
+import { HIGHLIGHT_LIMIT } from '../src/lib/highlight';
+import { guessLanguage } from '../src/lib/guessLanguage';
+test('markdown code blocks are highlighted with label and copy button; unknown languages stay plain', async () => {
+  const md = '```rust\nfn main() { let x = 1; }\n```\n\n```brainfuck\n+++.\n```';
+  await act(async () => root.render(<Markdown text={md} />));
+  const frames = host.querySelectorAll('.code-frame');
+  expect(frames.length).toBe(2);
+  expect(frames[0].querySelector('.code-lang')?.textContent).toBe('Rust');
+  expect(frames[0].querySelector('code.hljs .hljs-keyword')?.textContent).toBe('fn');
+  expect(frames[0].querySelector('.code-copy')).not.toBeNull();
+  expect(frames[1].querySelector('.hljs-keyword')).toBeNull();
+  expect(frames[1].querySelector('pre')?.textContent).toContain('+++.');
+  expect(host.querySelector('[style]')).toBeNull();
+});
+test('response highlighting: json detected, oversized bodies stay plain', async () => {
+  expect(guessLanguage('{"a":1}')).toBe('json');
+  expect(guessLanguage('plain', 'text/plain')).toBeUndefined();
+  expect(guessLanguage('<a/>', 'application/xml')).toBe('xml');
+  await act(async () => root.render(<CodeBlock code={'{"ok":true}'} language="json" />));
+  expect(host.querySelector('.hljs-attr')?.textContent).toBe('"ok"');
+  const big = '{"k":"' + 'x'.repeat(HIGHLIGHT_LIMIT) + '"}';
+  await act(async () => root.render(<CodeBlock code={big} language="json" />));
+  expect(host.querySelector('.hljs-attr')).toBeNull();
+});

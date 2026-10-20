@@ -4,6 +4,7 @@
  * genre: modern-minimal with user-specified ambient wallpaper and acrylic materials
  */
 @import '../tokens.css';
+@import './styles/code-theme.css';
 
 :root {
   font-family: var(--font-body);
@@ -2584,4 +2585,48 @@ input[type='checkbox'] {
 }
 .filter-more[aria-expanded='true'] {
   color: var(--color-strong);
+}
+
+/* Code frame (PR-D): language label + copy button */
+.code-frame {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-code-surface);
+  overflow: hidden;
+}
+.code-frame-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 12px;
+  border-bottom: 1px solid var(--color-line);
+  font-size: 10px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+.code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 0;
+  background: var(--color-transparent);
+  color: var(--color-muted);
+  font-size: 10px;
+}
+.code-copy:hover {
+  background: var(--color-raised);
+  color: var(--color-strong);
+}
+.markdown .code-frame pre,
+.article-canvas .markdown .code-frame pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.markdown .code-frame + * {
+  margin-top: 17px;
 }

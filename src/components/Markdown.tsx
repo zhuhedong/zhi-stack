@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { rehypeCodeHighlight } from '../lib/highlight';
+import { CodeFrame } from './CodeBlock';
 import { request } from '../lib/api';
 import { SourceLink } from './SourceLink';
 import { archivedMediaPath } from '../lib/media';
@@ -44,6 +46,7 @@ export function Markdown({ text, baseUrl }: { text: string; baseUrl?: string }) 
     <div className="markdown">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeCodeHighlight]}
         urlTransform={(value) => {
           const safe = defaultUrlTransform(value);
           if (!safe || safe.startsWith('#')) return safe;
@@ -63,6 +66,19 @@ export function Markdown({ text, baseUrl }: { text: string; baseUrl?: string }) 
             ) : (
               <SourceLink href={href}>{children}</SourceLink>
             ),
+          pre: ({ children, node }) => {
+            const code = node?.children.find((c) => c.type === 'element' && c.tagName === 'code');
+            const cls = code && code.type === 'element' ? code.properties?.className : undefined;
+            const lang = (Array.isArray(cls) ? cls : [])
+              .map(String)
+              .find((c) => c.startsWith('language-'))
+              ?.slice('language-'.length);
+            return (
+              <CodeFrame language={lang}>
+                <pre>{children}</pre>
+              </CodeFrame>
+            );
+          },
           img: ({ src, alt }) => <ArchivedImage key={src} src={src} alt={alt} />,
         }}
       >

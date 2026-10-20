@@ -1,3 +1,4 @@
+import { Code } from './Code';
 export function DeploymentSteps() {
   return (
     <section className="deployment-guide">
@@ -14,9 +15,11 @@ export function DeploymentSteps() {
         </li>
       </ol>
       <p>在项目源码目录运行：</p>
-      <pre className="response-body">
-        {'docker compose up --build -d\ndocker compose ps\ncurl -fsS http://127.0.0.1:3210/api/health'}
-      </pre>
+      <Code
+        className="response-body"
+        language="bash"
+        code={'docker compose up --build -d\ndocker compose ps\ncurl -fsS http://127.0.0.1:3210/api/health'}
+      />
       <p>
         健康检查成功后，本机浏览器打开 <code>http://127.0.0.1:3210</code> 创建主密码。远程访问需配置 HTTPS
         反向代理，将域名加入 <code>ALLOWED_ORIGINS</code>，然后在客户端填写该域名。
