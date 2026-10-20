@@ -92,6 +92,21 @@ DATABASE_URL=postgres://infohub:密码@db.example.com:5432/infohub?sslmode=verif
 
 ### 反向代理与跨域
 
+### 网页界面模式（WEB_UI）
+
+| 值 | 行为 |
+| --- | --- |
+| `full`（默认） | 与以前一致：同一进程提供 `FRONTEND_DIR` 里的完整网页版 |
+| `landing` | 只在 `/` 和 `/index.html` 提供内置于程序的静态介绍页（产品简介、桌面客户端下载、版本号）；其他非 `/api` 路径（网页路由、`/assets/*` 等）一律 404 |
+| `off` | 不提供任何网页内容，非 `/api` 路径一律 404 |
+
+- `LANDING_DOWNLOAD_URL`：可选，介绍页上的"下载桌面客户端"按钮地址（必须是 http/https）；不设置时显示"下载地址未配置"。
+- `landing`/`off` 下 `ALLOWED_ORIGINS` 默认不再包含本机端口、Vite 和 `PUBLIC_URL`，只保留 Tauri 桌面端来源（`tauri://localhost` 等）：现有桌面端在 WebView 里用 fetch 调 API，依赖 CORS。显式设置的值仍然生效。
+- `/api/*` 在所有模式下不变。`/api/health` 仍返回 `initialized`，桌面客户端要靠它决定显示"创建主密码"还是"登录"。
+- 注意：`landing`/`off` 下没有网页版，**首次初始化（创建主密码、使用初始化令牌）和从备份恢复都只能通过桌面客户端完成**。
+- Docker / compose 无需改动，镜像里的 `dist` 在这两种模式下只是不再被读取。只要在 `.env` 里加上 `WEB_UI=landing` 后重启即可。
+- 1Panel：在应用或容器的“环境变量”里添加 `WEB_UI=landing`（可再加 `LANDING_DOWNLOAD_URL=https://...`）并重建容器；网站反代配置不变，访问域名会看到介绍页，桌面客户端填写同一地址即可连接。
+
 对外请用 Caddy / Nginx / 1Panel 网站终止 TLS，反代到 `http://127.0.0.1:3210`。把站点地址写进 `PUBLIC_URL=https://infohub.example.com`，它会自动加入允许的来源；默认来源已包含本机端口、Vite 开发端口和 Tauri 桌面端。只有需要完全自定义时才设置 `ALLOWED_ORIGINS`。
 
 反代后登录限流按客户端 IP 计算。把反代的 IP 写进 `TRUSTED_PROXIES`（例如 `127.0.0.1`），服务才会采用 `X-Forwarded-For` 中的真实地址；不填则按连接地址计算。

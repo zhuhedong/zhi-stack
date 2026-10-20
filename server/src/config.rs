@@ -39,8 +39,41 @@ fn list(name: &str) -> Vec<String> {
 }
 
 /// Runtime settings that do not involve the database connection.
+/// Which web content the server publishes besides `/api`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WebUi {
+    /// Serve the full SPA from `FRONTEND_DIR` (default, previous behavior).
+    #[default]
+    Full,
+    /// Serve only a static intro page at `/`; the vault is used via the desktop client.
+    Landing,
+    /// No web content at all; only `/api`.
+    Off,
+}
+impl WebUi {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "" | "full" => Ok(Self::Full),
+            "landing" => Ok(Self::Landing),
+            "off" => Ok(Self::Off),
+            other => Err(format!(
+                "WEB_UI 只能是 full、landing 或 off，当前为：{other}"
+            )),
+        }
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Landing => "landing",
+            Self::Off => "off",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Settings {
+    pub web_ui: WebUi,
+    pub landing_download_url: Option<String>,
     pub bind_addr: SocketAddr,
     pub frontend_dir: String,
     pub allowed_origins: Vec<String>,
@@ -56,6 +89,8 @@ impl Default for Settings {
     fn default() -> Self {
         let bind_addr: SocketAddr = DEFAULT_BIND.parse().unwrap();
         Self {
+            web_ui: WebUi::Full,
+            landing_download_url: None,
             allowed_origins: default_origins(bind_addr.port(), None),
             bind_addr,
             frontend_dir: "dist".into(),
@@ -107,8 +142,23 @@ impl Settings {
             Some(p) => Some(p.parse::<u16>().map_err(|_| "INFOHUB_PORT 必须是端口号")?),
             None => None,
         };
+        let web_ui = WebUi::parse(&var("WEB_UI").unwrap_or_default())?;
+        let landing_download_url = match var("LANDING_DOWNLOAD_URL") {
+            Some(u) => {
+                let parsed = url::Url::parse(&u)
+                    .map_err(|_| "LANDING_DOWNLOAD_URL 必须是完整的 http(s) 地址".to_string())?;
+                if !matches!(parsed.scheme(), "http" | "https") {
+                    return Err("LANDING_DOWNLOAD_URL 必须以 http:// 或 https:// 开头".into());
+                }
+                Some(parsed.to_string())
+            }
+            None => None,
+        };
         let allowed_origins = match var("ALLOWED_ORIGINS") {
             Some(_) => list("ALLOWED_ORIGINS"),
+            // Without a web UI there is no browser origin to allow; only the
+            // Tauri desktop WebView (which calls the API with fetch/CORS) remains.
+            None if web_ui != WebUi::Full => TAURI_ORIGINS.iter().map(|s| s.to_string()).collect(),
             None => default_origins(bind_addr.port(), public_port),
         };
         for origin in &allowed_origins {
@@ -138,6 +188,8 @@ impl Settings {
             return Err("FILE_STORAGE 只能是 local 或 r2".into());
         }
         Ok(Self {
+            web_ui,
+            landing_download_url,
             bind_addr,
             frontend_dir: var("FRONTEND_DIR").unwrap_or_else(|| "dist".into()),
             allowed_origins,
@@ -226,11 +278,15 @@ impl Config {
     pub fn summary(&self) -> String {
         let s = &self.settings;
         format!(
-            "数据库: {}\n监听: {}\n前端目录: {}\n允许来源: {}\n内网白名单: {}\n可信代理: {}\n文件存储: {}\n备份上限: {} MiB\nGitHub Token: {}\n初始化令牌: {}",
+            "数据库: {}\n监听: {}\n网页界面: {}\n前端目录: {}\n允许来源: {}\n内网白名单: {}\n可信代理: {}\n文件存储: {}\n备份上限: {} MiB\nGitHub Token: {}\n初始化令牌: {}",
             self.database_summary,
             s.bind_addr,
-            s.frontend_dir,
-            s.allowed_origins.join(", "),
+            match s.web_ui {
+                WebUi::Landing => format!("landing（下载地址：{}）", s.landing_download_url.as_deref().unwrap_or("未设置")),
+                other => other.as_str().to_string(),
+            },
+            if s.web_ui == WebUi::Full { s.frontend_dir.as_str() } else { "（未使用）" },
+            if s.allowed_origins.is_empty() { "（无）".to_string() } else { s.allowed_origins.join(", ") },
             if s.allowed_private_hosts.is_empty() { "（无）".into() } else { s.allowed_private_hosts.join(", ") },
             if s.trusted_proxies.is_empty() { "（无，按连接地址限流）".into() } else { s.trusted_proxies.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ") },
             s.file_storage,
@@ -276,6 +332,14 @@ mod tests {
         );
         assert_eq!(percent_decode("p%40ss"), "p@ss");
         assert_eq!(percent_decode("plain"), "plain");
+    }
+    #[test]
+    fn web_ui_values_are_validated() {
+        assert_eq!(WebUi::parse("").unwrap(), WebUi::Full);
+        assert_eq!(WebUi::parse("FULL").unwrap(), WebUi::Full);
+        assert_eq!(WebUi::parse("landing").unwrap(), WebUi::Landing);
+        assert_eq!(WebUi::parse(" off ").unwrap(), WebUi::Off);
+        assert!(WebUi::parse("spa").is_err());
     }
     #[test]
     fn default_origins_follow_the_ports() {
