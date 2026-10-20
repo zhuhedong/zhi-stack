@@ -1,3 +1,4 @@
+import { Select } from './ui/Select';
 import { Form } from './Form';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle, Plus, Trash2 } from 'lucide-react';
@@ -183,7 +184,7 @@ export function ItemEditor({
             <div className="form-grid">
               <label>
                 资产类型
-                <select
+                <Select
                   aria-label="资产类型"
                   value={form.kind}
                   disabled={!!item}
@@ -214,12 +215,12 @@ export function ItemEditor({
                       {label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               {form.kind === 'credential' ? (
                 <label>
                   协议 / 类型
-                  <select
+                  <Select
                     aria-label="协议 / 类型"
                     value={form.data.typeKey || 'rest_api'}
                     onChange={(e) => {
@@ -246,7 +247,7 @@ export function ItemEditor({
                         {p.label}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
               ) : (
                 <label>
@@ -254,13 +255,13 @@ export function ItemEditor({
                   {form.kind === 'repo' ? (
                     <input value={form.category} onChange={(e) => change({ category: e.target.value })} />
                   ) : (
-                    <select value={form.category} onChange={(e) => change({ category: e.target.value })}>
+                    <Select value={form.category} onChange={(e) => change({ category: e.target.value })}>
                       {Object.entries(categories.knowledge).map(([v, l]) => (
                         <option key={v} value={v}>
                           {l}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   )}
                 </label>
               )}

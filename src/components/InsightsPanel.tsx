@@ -1,3 +1,4 @@
+import { Select } from './ui/Select';
 import { Form } from './Form';
 import { useEffect, useState } from 'react';
 import { api, errorMessage, exportText } from '../lib/api';
@@ -235,7 +236,7 @@ export function InsightsPanel({
                   <p className="muted">反馈加密保存在本工作台。导出后可自行分享给维护者。</p>
                   <label>
                     问题类型
-                    <select
+                    <Select
                       value={category}
                       disabled={busy}
                       onChange={(event) => setCategory(event.target.value)}
@@ -245,7 +246,7 @@ export function InsightsPanel({
                           {name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <label>
                     反馈内容
@@ -259,7 +260,7 @@ export function InsightsPanel({
                   </label>
                   <label>
                     本次使用评分
-                    <select
+                    <Select
                       value={rating}
                       disabled={busy}
                       onChange={(event) => setRating(event.target.value)}
@@ -268,7 +269,7 @@ export function InsightsPanel({
                       {[1, 2, 3, 4, 5].map((value) => (
                         <option key={value}>{value}</option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <button className="primary" disabled={busy || !message.trim()}>
                     保存反馈

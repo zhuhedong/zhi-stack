@@ -1,3 +1,4 @@
+import { Select } from './ui/Select';
 import { useEffect, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
 import { Markdown } from './LazyMarkdown';
@@ -95,7 +96,7 @@ export function RepoSubscription({ itemId }: { itemId: string }) {
         <div className="inline-actions">
           <label>
             检查间隔
-            <select
+            <Select
               aria-label="检查间隔"
               disabled={busy}
               value={subscription.interval_hours}
@@ -116,7 +117,7 @@ export function RepoSubscription({ itemId }: { itemId: string }) {
                   {hours} 小时
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <button disabled={busy || subscription.checking} onClick={() => void action('/check')}>
             {subscription.checking ? '正在检查…' : '立即检查'}

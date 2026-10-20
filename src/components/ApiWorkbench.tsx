@@ -1,3 +1,4 @@
+import { Select } from './ui/Select';
 import { useState } from 'react';
 import { Braces, Check, Copy, Download, LoaderCircle, Plus, Save, Send, Trash2 } from 'lucide-react';
 import type { Endpoint, Item, ItemData } from '../types';
@@ -116,7 +117,7 @@ export function ApiWorkbench({
       <div className="environment-bar">
         <label>
           当前环境
-          <select
+          <Select
             aria-label="当前环境"
             value={data.activeEnvironment || ''}
             onChange={(event) => update({ activeEnvironment: event.target.value })}
@@ -127,7 +128,7 @@ export function ApiWorkbench({
                 {env.name || '未命名环境'}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <button onClick={() => setTab('environments')}>管理环境</button>
       </div>
@@ -238,7 +239,7 @@ export function ApiWorkbench({
             <section className="request-editor">
               <div className="request-heading">
                 <div className="request-route">
-                  <select
+                  <Select
                     value={ep.method}
                     aria-label="HTTP 方法"
                     onChange={(e) => changeEndpoint({ method: e.target.value })}
@@ -246,7 +247,7 @@ export function ApiWorkbench({
                     {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'TRACE'].map((m) => (
                       <option key={m}>{m}</option>
                     ))}
-                  </select>
+                  </Select>
                   <input
                     className="mono"
                     value={ep.path}

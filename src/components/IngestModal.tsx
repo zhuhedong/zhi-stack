@@ -1,3 +1,4 @@
+import { Select } from './ui/Select';
 import { Form } from './Form';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Download, LoaderCircle } from 'lucide-react';
@@ -125,7 +126,7 @@ export function IngestModal({
           </label>
           <label>
             内容类型
-            <select
+            <Select
               aria-label="内容类型"
               value={kind}
               onChange={(e) => setKind(e.target.value)}
@@ -137,7 +138,7 @@ export function IngestModal({
               <option value="credential" disabled={!unlocked}>
                 OpenAPI / Swagger
               </option>
-            </select>
+            </Select>
           </label>
           <div className="form-grid">
             <label>
