@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { serverBinary, withSetupToken } from './server-binary.mjs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve, relative, isAbsolute } from 'node:path';
 import pg from 'pg';
@@ -119,13 +121,10 @@ const port = keep ? 3211 : 33210;
 let server;
 let serverLog = '';
 let token = '';
+const setupToken = 'integration-setup-' + randomUUID();
 const base = 'http://127.0.0.1:' + port + '/api';
 async function boot() {
-  const executable = resolve(
-    process.env.INFOHUB_TEST_BINARY ||
-      'server/target/debug/infohub-server' + (process.platform === 'win32' ? '.exe' : ''),
-  );
-  assert.ok(existsSync(executable), 'Build the server with cargo build --manifest-path server/Cargo.toml');
+  const executable = serverBinary();
   server = spawn(executable, [], {
     cwd: process.cwd(),
     windowsHide: true,
@@ -135,6 +134,7 @@ async function boot() {
       BIND_ADDR: '127.0.0.1:' + port,
       FRONTEND_DIR: resolve('dist'),
       ALLOWED_PRIVATE_HOSTS: '127.0.0.1',
+      SETUP_TOKEN: setupToken,
       FILE_STORAGE: 'local',
       LOCAL_STORAGE_PATH: storageRoot,
       ...(r2?.env || {}),
@@ -164,6 +164,7 @@ async function stopServer() {
   }
 }
 async function request(path, method = 'GET', body, expected = 200) {
+  body = withSetupToken(path, body, setupToken);
   const headers = {};
   if (token) headers.Authorization = 'Bearer ' + token;
   if (body && !(body instanceof FormData)) headers['Content-Type'] = 'application/json';
@@ -207,6 +208,7 @@ try {
   );
   assert.equal((await request('/health')).initialized, false);
   await request('/items', 'GET', undefined, 401);
+  await request('/auth/setup', 'POST', { password, setupToken: 'wrong-setup-token-value' }, 403);
   await request('/auth/setup', 'POST', { password: 'short' }, 400);
   token = (await request('/auth/setup', 'POST', { password })).token;
   await request('/auth/setup', 'POST', { password }, 409);

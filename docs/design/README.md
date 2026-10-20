@@ -13,4 +13,4 @@
 
 如原型示例文案与正式实现冲突，以用户要求和功能实现为准：服务端使用 PostgreSQL，敏感字段采用 AES-256-GCM 加密，不使用 SQLite。共享样式变量位于根目录 [tokens.css](../tokens.css)，实施约定见 [design.md](../design.md)。
 
-`dosc` 为原始资料目录名，保留以避免已有链接失效。项目说明和验收记录位于 [docs](../docs/README.md)。
+原 `dosc/` 目录已并入 `docs/design/`。项目说明和验收记录位于 [docs](../README.md)。

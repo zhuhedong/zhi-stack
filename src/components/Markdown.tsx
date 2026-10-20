@@ -3,12 +3,7 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { request } from '../lib/api';
 import { SourceLink } from './SourceLink';
-
-const MEDIA = /^\/api\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export function archivedMediaPath(src?: string) {
-  const path = src?.split(/[?#]/)[0];
-  return path && MEDIA.test(path) ? path.slice(4) : '';
-}
+import { archivedMediaPath } from '../lib/media';
 
 function ArchivedImage({ src, alt }: { src?: string; alt?: string }) {
   const [url, setUrl] = useState('');
@@ -63,7 +58,11 @@ export function Markdown({ text, baseUrl }: { text: string; baseUrl?: string }) 
         }}
         components={{
           a: ({ href, children }) =>
-            href?.startsWith('#') ? <a href={href}>{children}</a> : <SourceLink href={href}>{children}</SourceLink>,
+            href?.startsWith('#') ? (
+              <a href={href}>{children}</a>
+            ) : (
+              <SourceLink href={href}>{children}</SourceLink>
+            ),
           img: ({ src, alt }) => <ArchivedImage key={src} src={src} alt={alt} />,
         }}
       >

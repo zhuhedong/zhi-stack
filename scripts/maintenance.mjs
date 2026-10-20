@@ -17,7 +17,7 @@ function baseUrl(value) {
       .replace(/\/api$/, '') + '/api'
   );
 }
-export async function maintain({ command, base, file, password, backupPassword, confirm }) {
+export async function maintain({ command, base, file, password, backupPassword, confirm, setupToken }) {
   const api = baseUrl(base);
   let token = '';
   async function call(path, method = 'GET', body) {
@@ -89,6 +89,7 @@ export async function maintain({ command, base, file, password, backupPassword, 
     form.set('password', backupPassword);
     form.set('confirm', confirm);
     if (health.initialized) form.set('currentPassword', password);
+    else form.set('setupToken', setupToken || process.env.SETUP_TOKEN || '');
     form.set('backup', await openAsBlob(resolve(file)), 'restore.infohub');
     return await (await call('/backup/restore', 'POST', form)).json();
   } finally {

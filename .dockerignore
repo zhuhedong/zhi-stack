@@ -5,14 +5,12 @@
 .env
 .env.*
 !.env.example
-!.env.external-pg.example
 node_modules
 dist
 dist-ssr
 server/target
 src-tauri
 docs
-dosc
 assets
 scripts
 test-results
@@ -23,3 +21,4 @@ logs
 .vscode
 .idea
 .DS_Store
+certs

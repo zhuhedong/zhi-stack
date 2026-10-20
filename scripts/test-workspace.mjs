@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve, relative, isAbsolute } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import { serverBinary, withSetupToken } from './server-binary.mjs';
 
 export async function eventually(check, message, timeout = 15000) {
   const deadline = Date.now() + timeout;
@@ -45,6 +46,7 @@ export async function createWorkspace(extraEnv = {}) {
   let server;
   let log = '';
   let token = '';
+  const setupToken = 'test-setup-' + randomUUID();
   async function stop() {
     if (server && server.exitCode === null && server.signalCode === null) {
       const exited = once(server, 'exit');
@@ -53,10 +55,7 @@ export async function createWorkspace(extraEnv = {}) {
     }
   }
   async function boot() {
-    const binary = resolve(
-      process.env.INFOHUB_TEST_BINARY ||
-        '.local/product-build/debug/infohub-server' + (process.platform === 'win32' ? '.exe' : ''),
-    );
+    const binary = serverBinary();
     server = spawn(binary, [], {
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -68,6 +67,7 @@ export async function createWorkspace(extraEnv = {}) {
         FILE_STORAGE: 'local',
         LOCAL_STORAGE_PATH: storage,
         ALLOWED_PRIVATE_HOSTS: '127.0.0.1',
+        SETUP_TOKEN: setupToken,
         ...extraEnv,
       },
     });
@@ -87,6 +87,7 @@ export async function createWorkspace(extraEnv = {}) {
     }, 'Isolated server did not start: ' + log);
   }
   async function raw(path, method = 'GET', body, overrideToken = token) {
+    body = withSetupToken(path, body, setupToken);
     return fetch(base + path, {
       method,
       headers: {
@@ -104,6 +105,7 @@ export async function createWorkspace(extraEnv = {}) {
   }
   return {
     name,
+    setupToken,
     storage,
     base,
     db,

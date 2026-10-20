@@ -2,11 +2,12 @@
 name = "infohub-server"
 version = "0.2.2"
 edition = "2021"
+rust-version = "1.88"
 
 [dependencies]
 aes-gcm = "0.10"
 argon2 = "0.5"
-async_zip = { version = "0.0.17", default-features = false }
+async_zip = { version = "0.0.17", default-features = false, features = ["tokio"] }
 axum = { version = "0.8", features = ["multipart"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
@@ -14,14 +15,14 @@ dotenvy = "0.15"
 futures-util = "0.3"
 hex = "0.4"
 html2md = "0.2"
-object_store = { version = "0.12", features = ["aws", "tls-webpki-roots"] }
+object_store = { version = "0.14", default-features = false, features = ["aws", "fs"] }
 rand = "0.8"
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip", "stream"] }
-scraper = "0.24"
+scraper = "0.27"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
+serde_yaml = { package = "serde_norway", version = "0.9" }
 sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
 tokio = { version = "1", features = ["full"] }
@@ -33,6 +34,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = "1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

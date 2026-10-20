@@ -35,7 +35,7 @@ Windows release 服务端、桌面 EXE 及 NSIS 构建通过，桌面资源版�
 
 ## 2026-09-09 完整功能验收
 
-验收日期：2026-09-09。环境：Windows、Node.js 22.23.2、Rust stable、真实 PostgreSQL 18.4。设计依据为 dosc/ 的有效规范及用户关于原生窗口的最新要求。
+验收日期：2026-09-09。环境：Windows、Node.js 22.23.2、Rust stable、真实 PostgreSQL 18.4。设计依据为 docs/design/ 的有效规范及用户关于原生窗口的最新要求。
 
 本轮逐项检查并修复问题。完整清单见[逐项功能核查](functional-audit.md)。自动检查全部通过；修复后的完整浏览器点击验收、原生窗口操作仍有环境限制，不能据此认定所有实机操作已通过。
 

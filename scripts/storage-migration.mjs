@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, cpSync } from 'node:fs';
 import { resolve, relative, isAbsolute } from 'node:path';
 import pg from 'pg';
+import { serverBinary } from './server-binary.mjs';
 import { createR2Fixture } from './r2-fixture.mjs';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
@@ -26,10 +27,8 @@ await admin.connect();
 await admin.query('CREATE DATABASE "' + dbName + '"');
 const db = new pg.Client({ connectionString: dbUrl.toString() });
 await db.connect();
-const executable = resolve(
-  process.env.INFOHUB_TEST_BINARY ||
-    'server/target/debug/infohub-server' + (process.platform === 'win32' ? '.exe' : ''),
-);
+const executable = serverBinary();
+const setupToken = 'migration-setup-' + Date.now() + '-' + Math.random().toString(36).slice(2);
 const base = 'http://127.0.0.1:33310/api';
 let server;
 let log = '';
@@ -53,7 +52,13 @@ async function boot(env, failure = false) {
   log = '';
   server = spawn(executable, [], {
     windowsHide: true,
-    env: { ...process.env, DATABASE_URL: dbUrl.toString(), BIND_ADDR: '127.0.0.1:33310', ...env },
+    env: {
+      ...process.env,
+      DATABASE_URL: dbUrl.toString(),
+      BIND_ADDR: '127.0.0.1:33310',
+      SETUP_TOKEN: setupToken,
+      ...env,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', (bytes) => {
@@ -111,7 +116,7 @@ try {
   // Obtain authentic encrypted fixtures using the public API. Then, only in this
   // generated test database, restore the exact v1 schema to emulate an upgrade.
   await boot({ FILE_STORAGE: 'local', LOCAL_STORAGE_PATH: seedRoot });
-  token = (await request('/auth/setup', 'POST', { password })).token;
+  token = (await request('/auth/setup', 'POST', { password, setupToken })).token;
   const credential = await request(
     '/items',
     'POST',

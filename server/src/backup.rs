@@ -71,13 +71,14 @@ pub struct ChangePassword {
 pub async fn change_password(
     State(state): State<AppState>,
     Extension(auth): Extension<Auth>,
+    ip: auth::ClientIp,
     Json(input): Json<ChangePassword>,
 ) -> Result<Json<Value>> {
     auth.vault()?;
     if input.new_password.chars().count() < 12 || input.new_password.len() > 1024 {
         return Err(AppError::bad("新主密码至少 12 个字符，最长 1024 字节"));
     }
-    let old = auth::verify(&state, input.current_password).await?;
+    let old = auth::verify(&state, ip, input.current_password).await?;
     let mut salt = vec![0; 16];
     rand::thread_rng().fill_bytes(&mut salt);
     let new = crypto::derive(input.new_password, salt.clone()).await?;
@@ -275,7 +276,13 @@ async fn audit_schema(state: &AppState) -> Result<()> {
             .await?;
     if actual.iter().any(|t| {
         !TABLES.contains(&t.as_str())
-            && !["_sqlx_migrations", "file_objects", "backup_runs"].contains(&t.as_str())
+            && ![
+                "_sqlx_migrations",
+                "file_objects",
+                "backup_runs",
+                "item_search",
+            ]
+            .contains(&t.as_str())
     }) {
         return Err(AppError::bad(
             "数据库包含尚未纳入备份的业务表，请更新备份模块后重试",
@@ -319,10 +326,11 @@ pub async fn runs(State(state): State<AppState>) -> Result<Json<Value>> {
 pub async fn export(
     State(state): State<AppState>,
     Extension(auth): Extension<Auth>,
+    ip: auth::ClientIp,
     Json(input): Json<auth::Password>,
 ) -> Result<Response> {
     auth.vault()?;
-    auth::verify(&state, input.password.clone()).await?;
+    auth::verify(&state, ip, input.password.clone()).await?;
     audit_schema(&state).await?;
     let run = start_run(&state, "backup").await?;
     let result = make_backup(&state, input.password).await;
@@ -399,64 +407,16 @@ async fn make_backup(state: &AppState, password: String) -> Result<(tempfile::Na
     Ok((temp, size))
 }
 
+/// Restores a backup. Authorization happens before any file bytes are
+/// accepted: an initialized instance needs a live session plus the current
+/// master password, an uninitialized one needs the one-time setup token. The
+/// text fields must therefore precede the `backup` file part.
 pub async fn restore(
     State(state): State<AppState>,
+    ip: auth::ClientIp,
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Json<Value>> {
-    let mut password = zeroize::Zeroizing::new(String::new());
-    let mut current_password = zeroize::Zeroizing::new(String::new());
-    let mut confirm = String::new();
-    let temp = tempfile::NamedTempFile::new().map_err(io_error)?;
-    let mut file = File::from_std(temp.reopen().map_err(io_error)?);
-    let mut size = 0u64;
-    let mut seen_file = false;
-    // Bounded streaming upload; configure for larger personal archives when needed.
-    let max_size = std::env::var("MAX_BACKUP_BYTES")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(2 * 1024 * 1024 * 1024);
-    while let Some(mut field) = multipart.next_field().await.map_err(|_| invalid())? {
-        let name = field.name().unwrap_or_default().to_owned();
-        if name == "backup" {
-            if seen_file {
-                return Err(invalid());
-            }
-            seen_file = true;
-            while let Some(chunk) = field.chunk().await.map_err(|_| invalid())? {
-                size += chunk.len() as u64;
-                if size > max_size {
-                    return Err(AppError(
-                        StatusCode::PAYLOAD_TOO_LARGE,
-                        "备份超过服务端 MAX_BACKUP_BYTES 上限".into(),
-                    ));
-                }
-                file.write_all(&chunk).await.map_err(io_error)?;
-            }
-        } else {
-            let mut bytes = Vec::new();
-            while let Some(chunk) = field.chunk().await.map_err(|_| invalid())? {
-                if bytes.len() + chunk.len() > 2048 {
-                    return Err(invalid());
-                }
-                bytes.extend_from_slice(&chunk);
-            }
-            let text = String::from_utf8(bytes).map_err(|_| invalid())?;
-            match name.as_str() {
-                "password" => *password = text,
-                "currentPassword" => *current_password = text,
-                "confirm" => confirm = text,
-                _ => return Err(invalid()),
-            }
-        }
-    }
-    file.sync_all().await.map_err(io_error)?;
-    drop(file);
-    if !seen_file || password.is_empty() || password.len() > 1024 || confirm != "恢复并替换" {
-        return Err(AppError::bad(
-            "请选择备份、填写备份时的主密码，并确认恢复并替换",
-        ));
-    }
     let initialized: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM vault_config)")
         .fetch_one(&state.db)
         .await?;
@@ -476,13 +436,72 @@ pub async fn restore(
         if !valid {
             return Err(AppError::unauthorized());
         }
-        auth::verify(&state, current_password.to_string()).await?;
+    }
+    let mut password = zeroize::Zeroizing::new(String::new());
+    let mut current_password = zeroize::Zeroizing::new(String::new());
+    let mut setup_token = zeroize::Zeroizing::new(String::new());
+    let mut confirm = String::new();
+    let temp = tempfile::NamedTempFile::new().map_err(io_error)?;
+    let mut file = File::from_std(temp.reopen().map_err(io_error)?);
+    let mut size = 0u64;
+    let mut seen_file = false;
+    let max_size = state.settings.max_backup_bytes;
+    while let Some(mut field) = multipart.next_field().await.map_err(|_| invalid())? {
+        let name = field.name().unwrap_or_default().to_owned();
+        if name == "backup" {
+            if seen_file {
+                return Err(invalid());
+            }
+            seen_file = true;
+            if initialized {
+                auth::verify(&state, ip, current_password.to_string()).await?;
+            } else {
+                auth::check_setup_token(&state, ip, &setup_token).await?;
+            }
+            while let Some(chunk) = field.chunk().await.map_err(|_| invalid())? {
+                size += chunk.len() as u64;
+                if size > max_size {
+                    return Err(AppError(
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        "备份超过服务端 MAX_BACKUP_BYTES 上限".into(),
+                    ));
+                }
+                file.write_all(&chunk).await.map_err(io_error)?;
+            }
+        } else {
+            if seen_file {
+                return Err(invalid());
+            }
+            let mut bytes = Vec::new();
+            while let Some(chunk) = field.chunk().await.map_err(|_| invalid())? {
+                if bytes.len() + chunk.len() > 2048 {
+                    return Err(invalid());
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            let text = String::from_utf8(bytes).map_err(|_| invalid())?;
+            match name.as_str() {
+                "password" => *password = text,
+                "currentPassword" => *current_password = text,
+                "setupToken" => *setup_token = text,
+                "confirm" => confirm = text,
+                _ => return Err(invalid()),
+            }
+        }
+    }
+    file.sync_all().await.map_err(io_error)?;
+    drop(file);
+    if !seen_file || password.is_empty() || password.len() > 1024 || confirm != "恢复并替换" {
+        return Err(AppError::bad(
+            "请选择备份、填写备份时的主密码，并确认恢复并替换",
+        ));
     }
     audit_schema(&state).await?;
     let run = start_run(&state, "restore").await?;
     let result = load_backup(&state, temp.path(), password.to_string()).await;
     if result.is_ok() {
         state.sessions.lock().await.clear();
+        *state.setup_token.lock().await = None;
     }
     if finish_run(&state, run, result.is_ok(), Some(size as i64))
         .await
@@ -652,6 +671,9 @@ struct ArticleManifest {
     source: String,
     exported_at: chrono::DateTime<chrono::Utc>,
 }
+/// Streams the article ZIP: entries are written into a pipe by a background
+/// task while the response body reads from it, so only one image is held in
+/// memory at a time.
 pub async fn article_zip(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Response> {
     let (title, url, data): (String, String, Value) = sqlx::query_as(
         "SELECT title,url,data FROM items WHERE id=$1 AND kind='knowledge' AND deleted_at IS NULL",
@@ -665,7 +687,9 @@ pub async fn article_zip(State(state): State<AppState>, Path(id): Path<Uuid>) ->
         .captures_iter(&content)
         .filter_map(|c| Uuid::parse_str(&c[1]).ok())
         .collect();
-    let mut writer = async_zip::base::write::ZipFileWriter::new(Vec::new());
+    // Resolve every reference before streaming so missing media still yields a
+    // proper error status instead of a truncated download.
+    let mut images = Vec::new();
     for id in referenced {
         let (mime,key):(String,String)=sqlx::query_as("SELECT mime,storage_key FROM media WHERE id=$1 UNION ALL SELECT mime,storage_key FROM version_media WHERE media_id=$1 LIMIT 1").bind(id).fetch_one(&state.db).await?;
         let extension = match mime.as_str() {
@@ -676,37 +700,57 @@ pub async fn article_zip(State(state): State<AppState>, Path(id): Path<Uuid>) ->
         };
         let path = format!("images/{id}.{extension}");
         content = content.replace(&format!("/api/media/{id}"), &path);
-        let bytes = files::read(&state.db, &state.storage, &key).await?;
-        writer
-            .write_entry_whole(
-                async_zip::ZipEntryBuilder::new(path.into(), async_zip::Compression::Stored),
-                &bytes,
-            )
-            .await
-            .map_err(io_error)?;
+        images.push((path, key));
     }
-    writer
-        .write_entry_whole(
-            async_zip::ZipEntryBuilder::new("article.md".into(), async_zip::Compression::Stored),
-            content.as_bytes(),
-        )
-        .await
-        .map_err(io_error)?;
     let manifest = serde_json::to_vec_pretty(&ArticleManifest {
         title,
         source: url,
         exported_at: chrono::Utc::now(),
     })
     .map_err(io_error)?;
-    writer
-        .write_entry_whole(
-            async_zip::ZipEntryBuilder::new("source.json".into(), async_zip::Compression::Stored),
-            &manifest,
-        )
-        .await
-        .map_err(io_error)?;
-    let bytes = writer.close().await.map_err(io_error)?;
-    let mut response = Response::new(Body::from(bytes));
+    let (reader, writer) = tokio::io::duplex(256 * 1024);
+    tokio::spawn(async move {
+        let result: std::result::Result<(), String> = async {
+            let mut zip = async_zip::tokio::write::ZipFileWriter::with_tokio(writer);
+            for (path, key) in images {
+                let bytes = files::read(&state.db, &state.storage, &key)
+                    .await
+                    .map_err(|e| e.1)?;
+                zip.write_entry_whole(
+                    async_zip::ZipEntryBuilder::new(path.into(), async_zip::Compression::Stored),
+                    &bytes,
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+            }
+            zip.write_entry_whole(
+                async_zip::ZipEntryBuilder::new(
+                    "article.md".into(),
+                    async_zip::Compression::Stored,
+                ),
+                content.as_bytes(),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+            zip.write_entry_whole(
+                async_zip::ZipEntryBuilder::new(
+                    "source.json".into(),
+                    async_zip::Compression::Stored,
+                ),
+                &manifest,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+            let mut inner = zip.close().await.map_err(|e| e.to_string())?.into_inner();
+            inner.shutdown().await.map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        .await;
+        if let Err(error) = result {
+            tracing::warn!(%error, "article export stream aborted");
+        }
+    });
+    let mut response = Response::new(Body::from_stream(tokio_util::io::ReaderStream::new(reader)));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/zip"),

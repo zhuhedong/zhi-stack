@@ -6,7 +6,6 @@ import { Sidebar } from './components/Sidebar';
 import { ListPanel } from './components/ListPanel';
 import { Workspace } from './components/Workspace';
 import { AuthScreen } from './components/AuthScreen';
-import { DataManager } from './components/DataManager';
 import { VersionHistory } from './components/VersionHistory';
 import { OrganizePanel, type SavedFilter } from './components/OrganizePanel';
 import { TaskCenter } from './components/TaskCenter';
@@ -16,11 +15,14 @@ import { IngestModal } from './components/IngestModal';
 import { Modal } from './components/Modal';
 import { AppFrame } from './components/AppFrame';
 import { ContextMenu, type MenuCommand } from './components/ContextMenu';
-import { openSource } from './components/SourceLink';
+import { openSource } from './lib/openSource';
 import { isDesktop } from './lib/platform';
 import { api, copyText, errorMessage, saveItem, setToken } from './lib/api';
 import { useConfirm } from './lib/confirmation';
 import type { Item, ListResult, Pillar } from './types';
+const DataManager = lazy(() =>
+  import('./components/DataManager').then((module) => ({ default: module.DataManager })),
+);
 const InsightsPanel = lazy(() =>
   import('./components/InsightsPanel').then((module) => ({ default: module.InsightsPanel })),
 );
@@ -934,19 +936,21 @@ function App() {
         />
       )}
       {modal === 'data' && (
-        <DataManager
-          onClose={() => setModal(null)}
-          onChanged={reload}
-          onRestored={() => {
-            setModal(null);
-            setToken('');
-            setAuthenticated(false);
-            setItem(null);
-            setSelected(null);
-            clearDraft();
-            notify('恢复完成，请使用备份时的主密码登录。');
-          }}
-        />
+        <Suspense fallback={null}>
+          <DataManager
+            onClose={() => setModal(null)}
+            onChanged={reload}
+            onRestored={() => {
+              setModal(null);
+              setToken('');
+              setAuthenticated(false);
+              setItem(null);
+              setSelected(null);
+              clearDraft();
+              notify('恢复完成，请使用备份时的主密码登录。');
+            }}
+          />
+        </Suspense>
       )}
       {modal === 'history' && item && (
         <VersionHistory

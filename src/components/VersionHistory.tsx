@@ -3,7 +3,7 @@ import { History, RotateCcw } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import type { Item } from '../types';
 import { Modal } from './Modal';
-import { Markdown } from './Markdown';
+import { Markdown } from './LazyMarkdown';
 import { useConfirm } from '../lib/confirmation';
 
 interface Version {

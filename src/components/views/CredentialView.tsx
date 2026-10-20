@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Copy, Eye, EyeOff, LockKeyhole, Terminal } from 'lucide-react';
 import type { Item } from '../../types';
 import { copyText, errorMessage } from '../../lib/api';
 import { connectionCommand } from '../../lib/request';
-import { ApiWorkbench } from '../ApiWorkbench';
 import { Attachments } from '../Attachments';
+
+const ApiWorkbench = lazy(() => import('../ApiWorkbench').then((m) => ({ default: m.ApiWorkbench })));
 import { fieldNames, secretField } from '../../lib/fields';
 export function CredentialView({
   item,
@@ -43,7 +44,9 @@ export function CredentialView({
         </div>
       )}
       {item.category === 'http' ? (
-        <ApiWorkbench item={item} onSaved={onSaved} onDirty={onDirty} notify={notify} />
+        <Suspense fallback={<div className="muted">正在加载接口调试…</div>}>
+          <ApiWorkbench item={item} onSaved={onSaved} onDirty={onDirty} notify={notify} />
+        </Suspense>
       ) : (
         <>
           <div className="section-title">

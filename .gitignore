@@ -27,10 +27,11 @@ dist-ssr
 .env
 .env.*
 !.env.example
-!.env.external-pg.example
 .local/
 server/target/
 src-tauri/target/
 test-results/
 .hallmark/
 release/
+certs/*
+!certs/.gitkeep

@@ -4,8 +4,8 @@ use crate::{
     AppState,
 };
 use axum::{
-    extract::{Request, State},
-    http::StatusCode,
+    extract::{ConnectInfo, FromRequestParts, Request, State},
+    http::{request::Parts, HeaderMap, StatusCode},
     middleware::Next,
     response::Response,
     Extension, Json,
@@ -16,6 +16,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -40,6 +41,106 @@ impl Auth {
 #[derive(Deserialize)]
 pub struct Password {
     pub password: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Setup {
+    pub password: String,
+    #[serde(default)]
+    pub setup_token: String,
+}
+
+/// Client address used for login throttling. Defaults to the TCP peer; the
+/// rightmost `X-Forwarded-For` hop is only trusted when the peer is listed in
+/// `TRUSTED_PROXIES`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClientIp(pub IpAddr);
+pub fn client_ip(peer: Option<IpAddr>, headers: &HeaderMap, trusted: &[IpAddr]) -> IpAddr {
+    let peer = peer.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+    if !trusted.contains(&peer) {
+        return peer;
+    }
+    let hops: Vec<IpAddr> = headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(','))
+        .filter_map(|h| h.trim().parse().ok())
+        .collect();
+    hops.into_iter()
+        .rev()
+        .find(|ip| !trusted.contains(ip))
+        .unwrap_or(peer)
+}
+impl FromRequestParts<AppState> for ClientIp {
+    type Rejection = std::convert::Infallible;
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> std::result::Result<Self, Self::Rejection> {
+        let peer = parts
+            .extensions
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|c| c.0.ip());
+        Ok(ClientIp(client_ip(
+            peer,
+            &parts.headers,
+            &state.settings.trusted_proxies,
+        )))
+    }
+}
+
+struct Attempts {
+    failures: u32,
+    blocked_until: Option<Instant>,
+    last: Instant,
+}
+/// Per-client failed-password limiter with exponential backoff. Successful
+/// verification clears the client's record, and one client's failures never
+/// block another client.
+#[derive(Default)]
+pub struct Limiter {
+    clients: HashMap<IpAddr, Attempts>,
+}
+const FREE_FAILURES: u32 = 5;
+const MAX_BACKOFF: Duration = Duration::from_secs(15 * 60);
+impl Limiter {
+    pub fn check(&mut self, ip: IpAddr, now: Instant) -> std::result::Result<(), Duration> {
+        match self.clients.get(&ip).and_then(|a| a.blocked_until) {
+            Some(until) if until > now => Err(until - now),
+            _ => Ok(()),
+        }
+    }
+    pub fn fail(&mut self, ip: IpAddr, now: Instant) {
+        if self.clients.len() >= 4096 {
+            self.clients
+                .retain(|_, a| now.duration_since(a.last) < Duration::from_secs(3600));
+        }
+        let entry = self.clients.entry(ip).or_insert(Attempts {
+            failures: 0,
+            blocked_until: None,
+            last: now,
+        });
+        if now.duration_since(entry.last) > Duration::from_secs(3600) {
+            entry.failures = 0;
+        }
+        entry.failures += 1;
+        entry.last = now;
+        if entry.failures >= FREE_FAILURES {
+            let exp = (entry.failures - FREE_FAILURES).min(10);
+            let delay = Duration::from_secs(1u64 << exp).min(MAX_BACKOFF);
+            entry.blocked_until = Some(now + delay);
+        }
+    }
+    pub fn succeed(&mut self, ip: IpAddr) {
+        self.clients.remove(&ip);
+    }
+}
+fn too_many(wait: Duration) -> AppError {
+    AppError(
+        StatusCode::TOO_MANY_REQUESTS,
+        format!("尝试过于频繁，请 {} 秒后重试", wait.as_secs().max(1)),
+    )
 }
 
 pub async fn middleware(
@@ -76,27 +177,17 @@ pub async fn status(State(state): State<AppState>) -> Result<Json<Value>> {
         .fetch_one(&state.db)
         .await?;
     Ok(Json(
-        json!({"initialized": initialized, "database": "PostgreSQL", "version": env!("CARGO_PKG_VERSION")}),
+        json!({"initialized": initialized, "setupTokenRequired": !initialized, "database": "PostgreSQL", "version": env!("CARGO_PKG_VERSION")}),
     ))
 }
 
-async fn throttle(state: &AppState) -> Result<()> {
-    let mut attempts = state.login_attempts.lock().await;
-    if attempts.0.elapsed() > Duration::from_secs(60) {
-        *attempts = (Instant::now(), 0);
-    }
-    if attempts.1 >= 10 {
-        return Err(AppError(
-            StatusCode::TOO_MANY_REQUESTS,
-            "尝试过于频繁，请一分钟后重试".into(),
-        ));
-    }
-    attempts.1 += 1;
-    Ok(())
-}
-
-pub(crate) async fn verify(state: &AppState, password: String) -> Result<VaultKey> {
-    throttle(state).await?;
+pub(crate) async fn verify(state: &AppState, ip: ClientIp, password: String) -> Result<VaultKey> {
+    state
+        .login_limiter
+        .lock()
+        .await
+        .check(ip.0, Instant::now())
+        .map_err(too_many)?;
     if password.len() > 1024 {
         return Err(AppError::bad("密码过长"));
     }
@@ -106,8 +197,11 @@ pub(crate) async fn verify(state: &AppState, password: String) -> Result<VaultKe
             .await?;
     let (salt, verifier) = config.ok_or_else(|| AppError::bad("请先创建主密码"))?;
     let key = crypto::derive(password, salt).await?;
-    crypto::decrypt(&key, &verifier, "infohub-vault-v1")
-        .map_err(|_| AppError(StatusCode::UNAUTHORIZED, "主密码不正确".into()))?;
+    if crypto::decrypt(&key, &verifier, "infohub-vault-v1").is_err() {
+        state.login_limiter.lock().await.fail(ip.0, Instant::now());
+        return Err(AppError(StatusCode::UNAUTHORIZED, "主密码不正确".into()));
+    }
+    state.login_limiter.lock().await.succeed(ip.0);
     Ok(key)
 }
 
@@ -139,11 +233,66 @@ pub(crate) async fn new_session(state: &AppState, key: VaultKey) -> Json<Value> 
     Json(json!({"token": token, "unlocked": true}))
 }
 
+/// Generates (or takes from SETUP_TOKEN) the one-time setup token and logs it
+/// so only someone with access to the server logs can claim a new instance.
+pub async fn prepare_setup_token(state: &AppState) -> Result<()> {
+    let initialized: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM vault_config)")
+        .fetch_one(&state.db)
+        .await?;
+    let mut token = state.setup_token.lock().await;
+    if initialized {
+        *token = None;
+        return Ok(());
+    }
+    if token.is_none() {
+        let mut bytes = [0u8; 12];
+        rand::thread_rng().fill_bytes(&mut bytes);
+        *token = Some(hex::encode(bytes));
+        tracing::warn!(
+            setup_token = %token.as_deref().unwrap_or_default(),
+            "工作台尚未初始化：首次设置主密码时需要填写这个一次性初始化令牌"
+        );
+    } else {
+        tracing::warn!("工作台尚未初始化：首次设置主密码时需要填写 SETUP_TOKEN 中的令牌");
+    }
+    Ok(())
+}
+pub(crate) async fn check_setup_token(state: &AppState, ip: ClientIp, given: &str) -> Result<()> {
+    let mut limiter = state.login_limiter.lock().await;
+    limiter.check(ip.0, Instant::now()).map_err(too_many)?;
+    let expected = state.setup_token.lock().await.clone();
+    let ok = expected.is_some_and(|t| {
+        let (a, b) = (
+            Sha256::digest(t.as_bytes()),
+            Sha256::digest(given.trim().as_bytes()),
+        );
+        a == b
+    });
+    if !ok {
+        limiter.fail(ip.0, Instant::now());
+        return Err(AppError(
+            StatusCode::FORBIDDEN,
+            "初始化令牌不正确；请在服务端启动日志中查找 setup_token，或使用 SETUP_TOKEN 的值"
+                .into(),
+        ));
+    }
+    Ok(())
+}
 pub async fn setup(
     State(state): State<AppState>,
-    Json(input): Json<Password>,
+    ip: ClientIp,
+    Json(input): Json<Setup>,
 ) -> Result<Json<Value>> {
-    throttle(&state).await?;
+    let initialized: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM vault_config)")
+        .fetch_one(&state.db)
+        .await?;
+    if initialized {
+        return Err(AppError(
+            StatusCode::CONFLICT,
+            "工作台已初始化，请登录".into(),
+        ));
+    }
+    check_setup_token(&state, ip, &input.setup_token).await?;
     if input.password.chars().count() < 12 || input.password.len() > 1024 {
         return Err(AppError::bad("主密码至少 12 个字符，最长 1024 字节"));
     }
@@ -164,13 +313,15 @@ pub async fn setup(
             "工作台已初始化，请登录".into(),
         ));
     }
+    *state.setup_token.lock().await = None;
     Ok(new_session(&state, key).await)
 }
 pub async fn login(
     State(state): State<AppState>,
+    ip: ClientIp,
     Json(input): Json<Password>,
 ) -> Result<Json<Value>> {
-    let key = verify(&state, input.password).await?;
+    let key = verify(&state, ip, input.password).await?;
     Ok(new_session(&state, key).await)
 }
 pub async fn session(Extension(auth): Extension<Auth>) -> Json<Value> {
@@ -185,9 +336,10 @@ pub async fn lock(State(state): State<AppState>, Extension(auth): Extension<Auth
 pub async fn unlock(
     State(state): State<AppState>,
     Extension(auth): Extension<Auth>,
+    ip: ClientIp,
     Json(input): Json<Password>,
 ) -> Result<Json<Value>> {
-    let key = verify(&state, input.password).await?;
+    let key = verify(&state, ip, input.password).await?;
     let mut sessions = state.sessions.lock().await;
     let session = sessions
         .get_mut(&auth.token)
@@ -277,17 +429,37 @@ mod tests {
         assert!(!sessions.contains_key(&hash));
     }
 
-    #[tokio::test]
-    async fn login_rate_limit_recovers_after_its_window() {
-        let state = state();
-        for _ in 0..10 {
-            assert!(throttle(&state).await.is_ok());
+    #[test]
+    fn limiter_is_per_client_with_backoff() {
+        let mut l = Limiter::default();
+        let now = Instant::now();
+        let attacker: IpAddr = "203.0.113.9".parse().unwrap();
+        let owner: IpAddr = "198.51.100.7".parse().unwrap();
+        for _ in 0..FREE_FAILURES - 1 {
+            l.fail(attacker, now);
+            assert!(l.check(attacker, now).is_ok());
         }
+        l.fail(attacker, now);
+        assert!(l.check(attacker, now).is_err());
+        assert!(l.check(owner, now).is_ok());
+        assert!(l.check(attacker, now + Duration::from_secs(2)).is_ok());
+        for _ in 0..20 {
+            l.fail(attacker, now);
+        }
+        let wait = l.check(attacker, now).unwrap_err();
+        assert!(wait <= MAX_BACKOFF && wait > Duration::from_secs(60));
+        l.succeed(attacker);
+        assert!(l.check(attacker, now).is_ok());
+    }
+    #[test]
+    fn forwarded_for_is_only_trusted_from_configured_proxies() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "1.1.1.1, 9.9.9.9".parse().unwrap());
+        let proxy: IpAddr = "10.0.0.2".parse().unwrap();
+        assert_eq!(client_ip(Some(proxy), &headers, &[]), proxy);
         assert_eq!(
-            throttle(&state).await.unwrap_err().0,
-            StatusCode::TOO_MANY_REQUESTS
+            client_ip(Some(proxy), &headers, &[proxy]),
+            "9.9.9.9".parse::<IpAddr>().unwrap()
         );
-        state.login_attempts.lock().await.0 = Instant::now() - Duration::from_secs(61);
-        assert!(throttle(&state).await.is_ok());
     }
 }

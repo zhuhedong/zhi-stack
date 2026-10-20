@@ -1,13 +1,42 @@
+# InfoHub — single Compose file. Pick ONE deployment with COMPOSE_PROFILES in .env:
+#   bundled   PostgreSQL container + app (default in .env.example)
+#   external  app only, connects to an existing PostgreSQL via DATABASE_URL
+#   1panel    like external, and joins 1Panel's `1panel-network`
+# All settings come from .env (copy .env.example). See docs/deploy.md.
+x-app: &app
+  image: ${INFOHUB_IMAGE:-infohub:local}
+  build: .
+  restart: unless-stopped
+  stop_grace_period: 60s
+  env_file:
+    - path: .env
+      required: false
+  environment: &app-env
+    # Fixed inside the container; everything else is read from .env.
+    BIND_ADDR: 0.0.0.0:3210
+    FRONTEND_DIR: /app/dist
+    LOCAL_STORAGE_PATH: /data/files
+    INFOHUB_PORT: ${INFOHUB_PORT:-3210}
+  volumes:
+    - infohub_files:/data/files
+    # Optional provider CA: put pg-ca.pem in ./certs and add
+    # sslmode=verify-full&sslrootcert=/run/infohub/certs/pg-ca.pem to DATABASE_URL.
+    - ${PG_CA_DIR:-./certs}:/run/infohub/certs:ro
+  ports:
+    - '${INFOHUB_BIND_IP:-127.0.0.1}:${INFOHUB_PORT:-3210}:3210'
+
 services:
   postgres:
+    profiles: [bundled]
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: infohub
       POSTGRES_USER: infohub
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    ports:
-      - '127.0.0.1:5432:5432'
+      # Required for the bundled profile; the postgres image refuses to start without it.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    # Not published to the host. For local debugging add a compose.override.yaml
+    # with ports: ['127.0.0.1:5432:5432'].
     volumes:
       - infohub_pg:/var/lib/postgresql/data
     healthcheck:
@@ -15,36 +44,31 @@ services:
       interval: 5s
       timeout: 5s
       retries: 15
+
   app:
-    image: ${INFOHUB_IMAGE:-infohub:local}
-    build: .
-    restart: unless-stopped
-    stop_grace_period: 60s
+    <<: *app
+    profiles: [bundled]
     environment:
-      PGHOST: postgres
-      PGPORT: 5432
-      PGUSER: infohub
-      PGPASSWORD: ${POSTGRES_PASSWORD}
-      PGDATABASE: infohub
-      BIND_ADDR: 0.0.0.0:3210
-      FRONTEND_DIR: /app/dist
-      RUST_LOG: ${RUST_LOG:-infohub_server=info}
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      ALLOWED_PRIVATE_HOSTS: ${ALLOWED_PRIVATE_HOSTS:-}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3210,http://127.0.0.1:3210,http://tauri.localhost,https://tauri.localhost,tauri://localhost}
-      FILE_STORAGE: ${FILE_STORAGE:-local}
-      LOCAL_STORAGE_PATH: /data/files
-      R2_ENDPOINT: ${R2_ENDPOINT:-}
-      R2_BUCKET: ${R2_BUCKET:-}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
-    volumes:
-      - infohub_files:/data/files
-    ports:
-      - '127.0.0.1:3210:3210'
+      <<: *app-env
+      # The bundled database always wins over any DATABASE_URL in .env.
+      DATABASE_URL: postgres://infohub:${POSTGRES_PASSWORD:-}@postgres:5432/infohub
     depends_on:
       postgres:
         condition: service_healthy
+
+  app-external:
+    <<: *app
+    profiles: [external]
+
+  app-1panel:
+    <<: *app
+    profiles: [1panel]
+    networks: [default, 1panel-network]
+
 volumes:
   infohub_pg:
   infohub_files:
+
+networks:
+  1panel-network:
+    external: true

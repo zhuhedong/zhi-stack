@@ -25,6 +25,7 @@ export function RestoreForm({
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState('');
   const [current, setCurrent] = useState('');
+  const [setupToken, setSetupToken] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -36,7 +37,8 @@ export function RestoreForm({
     setError('');
     const data = new FormData();
     data.set('password', password);
-    data.set('currentPassword', current);
+    if (initialized) data.set('currentPassword', current);
+    else data.set('setupToken', setupToken.trim());
     data.set('confirm', confirm);
     data.set('backup', file);
     try {
@@ -84,6 +86,19 @@ export function RestoreForm({
             onChange={(e) => setPassword(e.target.value)}
           />
         </label>
+        {!initialized && (
+          <label>
+            初始化令牌
+            <input
+              autoComplete="off"
+              required
+              spellCheck={false}
+              placeholder="服务端启动日志中的 setup_token"
+              value={setupToken}
+              onChange={(e) => setSetupToken(e.target.value)}
+            />
+          </label>
+        )}
         {initialized && (
           <label>
             当前工作台主密码
