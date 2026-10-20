@@ -35,13 +35,13 @@ export function Header({
   onManage: () => void;
 }) {
   return (
-    <header className="app-header">
-      <div className="header-brand">
+    <header className="app-header" data-tauri-drag-region>
+      <div className="header-brand" data-tauri-drag-region>
         <button className="icon-button mobile-menu" onClick={onMenu} aria-label="展开导航">
           <Menu size={18} />
         </button>
         <BrandIcon />
-        <strong>
+        <strong data-tauri-drag-region>
           InfoHub <span className="brand-subtitle">开发者数字工作台</span>
         </strong>
         <span className="database-status">
@@ -49,7 +49,7 @@ export function Header({
           PostgreSQL
         </span>
       </div>
-      <div className="header-create">
+      <div className="header-create" data-tauri-drag-region>
         <button className="primary" aria-label="收录抓取" onClick={onIngest}>
           <Download size={13} />
           <span>收录抓取</span>
@@ -60,7 +60,7 @@ export function Header({
           <span>新建资产</span>
         </button>
       </div>
-      <div className="header-actions">
+      <div className="header-actions" data-tauri-drag-region>
         <button
           className="icon-button"
           aria-label="数据与安全"
