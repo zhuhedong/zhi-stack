@@ -171,3 +171,7 @@ R2_SECRET_ACCESS_KEY=你的SecretAccessKey
 | 登录提示“尝试过于频繁” | 同一 IP 连续输错 5 次后按指数退避（最长 15 分钟）；反代后请设置 `TRUSTED_PROXIES` |
 
 相关文件：[Dockerfile](../Dockerfile)、[compose.yaml](../compose.yaml)、[.env.example](../.env.example)、[运维手册](operations.md)。
+
+## 桌面客户端
+
+安装包由 GitHub Actions 自动打包，发布流程和签名配置见 [desktop-release.md](desktop-release.md)。介绍页模式下建议设置 `LANDING_DOWNLOAD_URL=https://github.com/zhuhedong/zhi-stack/releases/latest`。
