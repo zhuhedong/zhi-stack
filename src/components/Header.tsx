@@ -5,12 +5,19 @@ import {
   LockKeyholeOpen,
   LogOut,
   Menu,
+  Monitor,
+  Moon,
   Plus,
   Search,
   Settings2,
+  Sun,
 } from 'lucide-react';
 import { isDesktop, shortcutModifier } from '../lib/platform';
 import { BrandIcon } from './BrandIcon';
+import { useTheme, type ThemePref } from '../lib/theme';
+
+const themeOrder: ThemePref[] = ['system', 'light', 'dark'];
+const themeLabel: Record<ThemePref, string> = { system: '跟随系统', light: '浅色', dark: '深色' };
 export function Header({
   unlocked,
   busy,
@@ -34,6 +41,9 @@ export function Header({
   onServerSettings: () => void;
   onManage: () => void;
 }) {
+  const [theme, setTheme] = useTheme();
+  const ThemeIcon = theme === 'dark' ? Moon : theme === 'light' ? Sun : Monitor;
+  const nextTheme = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length];
   return (
     <header className="app-header" data-tauri-drag-region>
       <div className="header-brand" data-tauri-drag-region>
@@ -81,6 +91,14 @@ export function Header({
             <Settings2 size={14} />
           </button>
         )}
+        <button
+          className="icon-button theme-toggle"
+          aria-label={`外观：${themeLabel[theme]}，点击切换为${themeLabel[nextTheme]}`}
+          title={`外观：${themeLabel[theme]}（点击切换为${themeLabel[nextTheme]}）`}
+          onClick={() => setTheme(nextTheme)}
+        >
+          <ThemeIcon size={14} />
+        </button>
         <button className="global-search" aria-label="全局检索" onClick={onSearch}>
           <Search size={13} />
           <span>全局检索</span>

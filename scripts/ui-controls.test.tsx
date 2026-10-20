@@ -119,3 +119,26 @@ test('response highlighting: json detected, oversized bodies stay plain', async 
   await act(async () => root.render(<CodeBlock code={big} language="json" />));
   expect(host.querySelector('.hljs-attr')).toBeNull();
 });
+
+import { applyTheme, readThemePref, resolveTheme } from '../src/lib/theme';
+test('theme: explicit choice persists, system follows prefers-color-scheme', () => {
+  let dark = true;
+  window.matchMedia = ((q: string) => ({
+    matches: q.includes('dark') ? dark : false,
+    media: q,
+    addEventListener() {},
+    removeEventListener() {},
+  })) as unknown as typeof window.matchMedia;
+  localStorage.removeItem('infohub.theme');
+  expect(readThemePref()).toBe('system');
+  applyTheme();
+  expect(document.documentElement.dataset.theme).toBe('dark');
+  dark = false;
+  expect(resolveTheme('system')).toBe('light');
+  localStorage.setItem('infohub.theme', 'dark');
+  applyTheme();
+  expect(document.documentElement.dataset.theme).toBe('dark');
+  expect(document.documentElement.dataset.themePref).toBe('dark');
+  localStorage.setItem('infohub.theme', 'bogus');
+  expect(readThemePref()).toBe('system');
+});

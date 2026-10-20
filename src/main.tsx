@@ -7,7 +7,9 @@ import { ConfirmationProvider } from './components/ConfirmationProvider';
 import { WindowControls } from './components/WindowControls';
 import { isDesktop, isMac } from './lib/platform';
 import { applyReadingWidth } from './lib/readingWidth';
+import { applyTheme } from './lib/theme';
 
+applyTheme();
 applyReadingWidth();
 
 if (isDesktop) {

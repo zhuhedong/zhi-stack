@@ -78,3 +78,32 @@
 .hljs-strong {
   font-weight: 600;
 }
+:root[data-theme='dark'] {
+  --code-text: #e6edf3;
+  --code-comment: #8b949e;
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-number: #79c0ff;
+  --code-function: #d2a8ff;
+  --code-type: #ffa657;
+  --code-attr: #7ee787;
+  --code-meta: #9da7b3;
+  --code-deletion-bg: rgba(248, 81, 73, 0.2);
+  --code-addition-bg: rgba(46, 160, 67, 0.22);
+}
+/* Before the theme script runs, follow the OS (no light flash in dark mode). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --code-text: #e6edf3;
+    --code-comment: #8b949e;
+    --code-keyword: #ff7b72;
+    --code-string: #a5d6ff;
+    --code-number: #79c0ff;
+    --code-function: #d2a8ff;
+    --code-type: #ffa657;
+    --code-attr: #7ee787;
+    --code-meta: #9da7b3;
+    --code-deletion-bg: rgba(248, 81, 73, 0.2);
+    --code-addition-bg: rgba(46, 160, 67, 0.22);
+  }
+}
