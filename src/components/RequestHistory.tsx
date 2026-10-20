@@ -1,3 +1,4 @@
+import { Code } from './Code';
 import { useEffect, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
 import { useProbe } from '../lib/useProbe';
@@ -147,20 +148,22 @@ export function RequestHistory({ itemId }: { itemId: string }) {
               {probe.sending && <button onClick={probe.cancel}>取消请求</button>}
             </div>
           </div>
-          <pre className="response-body">{JSON.stringify(selected.request || {}, null, 2)}</pre>
+          <Code className="response-body" language="json" code={JSON.stringify(selected.request || {}, null, 2)} />
           <h4>{probe.response ? '本次响应' : '历史响应'}</h4>
           {(probe.response || selected.response)?.truncated && (
             <p className="info">
               这条历史已截断：最多保留前 1 MB 文本，编码过大时会进一步缩短；较大的二进制响应未保留。
             </p>
           )}
-          <pre className="response-body">
-            {JSON.stringify(
+          <Code
+            className="response-body"
+            language="json"
+            code={JSON.stringify(
               probe.response || selected.response || { error: selected.error || statuses[selected.status] },
               null,
               2,
             )}
-          </pre>
+          />
         </div>
       )}
       {(error || probe.error) && (

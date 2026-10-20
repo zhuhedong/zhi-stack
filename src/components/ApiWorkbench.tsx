@@ -1,3 +1,11 @@
+import { Code } from './Code';
+import { guessLanguage } from '../lib/guessLanguage';
+
+const headerValue = (headers: unknown, name: string): string | undefined => {
+  if (!headers || typeof headers !== 'object') return undefined;
+  const hit = Object.entries(headers as Record<string, unknown>).find(([k]) => k.toLowerCase() === name);
+  return hit ? String(hit[1]) : undefined;
+};
 import { Select } from './ui/Select';
 import { useState } from 'react';
 import { Braces, Check, Copy, Download, LoaderCircle, Plus, Save, Send, Trash2 } from 'lucide-react';
@@ -367,9 +375,7 @@ export function ApiWorkbench({
                   复制完整命令
                 </button>
               </div>
-              <pre className="curl-preview">
-                <code>{curl}</code>
-              </pre>
+              <Code className="curl-preview" code={curl} language="bash" />
               <div className="response-panel">
                 <div className="section-title">
                   <h3>响应结果</h3>
@@ -416,13 +422,21 @@ export function ApiWorkbench({
                         Headers
                       </button>
                     </div>
-                    <pre className="response-body">
-                      {responseTab === 'body'
-                        ? response.bodyBase64 != null
-                          ? '二进制响应，请下载查看原始文件。'
-                          : responseBody || '（空响应）'
-                        : JSON.stringify(response.headers, null, 2)}
-                    </pre>
+                    {responseTab === 'body' ? (
+                      response.bodyBase64 != null || !responseBody ? (
+                        <pre className="response-body">
+                          {response.bodyBase64 != null ? '二进制响应，请下载查看原始文件。' : '（空响应）'}
+                        </pre>
+                      ) : (
+                        <Code
+                          className="response-body"
+                          code={responseBody}
+                          language={guessLanguage(responseBody, headerValue(response.headers, 'content-type'))}
+                        />
+                      )
+                    ) : (
+                      <Code className="response-body" code={JSON.stringify(response.headers, null, 2)} language="json" />
+                    )}
                   </>
                 ) : (
                   <div className="inline-empty compact">

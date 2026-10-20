@@ -1,0 +1,80 @@
+/* Syntax highlighting theme (highlight.js classes), driven by --code-* tokens
+ * so light/dark themes only swap variables. */
+:root {
+  --code-text: #24292f;
+  --code-comment: #6e7781;
+  --code-keyword: #cf222e;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-function: #8250df;
+  --code-type: #953800;
+  --code-attr: #116329;
+  --code-meta: #57606a;
+  --code-deletion-bg: rgba(255, 129, 130, 0.18);
+  --code-addition-bg: rgba(74, 194, 107, 0.18);
+}
+.hljs {
+  color: var(--code-text);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--code-comment);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-template-tag,
+.hljs-literal {
+  color: var(--code-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-template-variable,
+.hljs-symbol {
+  color: var(--code-string);
+}
+.hljs-number,
+.hljs-variable.constant_,
+.hljs-bullet,
+.hljs-link {
+  color: var(--code-number);
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-section,
+.hljs-name {
+  color: var(--code-function);
+}
+.hljs-type,
+.hljs-built_in,
+.hljs-title.class_,
+.hljs-class .hljs-title {
+  color: var(--code-type);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-params {
+  color: var(--code-attr);
+}
+.hljs-meta,
+.hljs-punctuation,
+.hljs-operator {
+  color: var(--code-meta);
+}
+.hljs-deletion {
+  background: var(--code-deletion-bg);
+}
+.hljs-addition {
+  background: var(--code-addition-bg);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 600;
+}
