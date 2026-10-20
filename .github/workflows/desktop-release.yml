@@ -289,6 +289,24 @@ jobs:
     if: needs.version.outputs.release == 'true' && needs.build.result == 'success'
     runs-on: ubuntu-latest
     steps:
+      - name: Upload version-less copies for /download (releases/latest/download/<name>)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p stable && cd stable
+          copy() { # <glob> <stable name>
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$1" --clobber
+            f=$(ls $1 | head -n1); mv "$f" "$2"
+          }
+          copy '*_aarch64.dmg'      InfoHub_macos_aarch64.dmg
+          copy '*_x64.dmg'          InfoHub_macos_x64.dmg
+          copy '*_x64-setup.exe'    InfoHub_windows_x64-setup.exe
+          copy '*_x64_en-US.msi'    InfoHub_windows_x64.msi
+          copy '*_amd64.deb'        InfoHub_linux_amd64.deb
+          copy '*_amd64.AppImage'   InfoHub_linux_amd64.AppImage
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber InfoHub_*
       - name: Flip draft to published (creates the tag)
         env:
           GH_TOKEN: ${{ github.token }}

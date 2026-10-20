@@ -38,7 +38,8 @@
 服务端 `WEB_UI=landing` 时，建议在 `.env` 里设置：
 
 ```
-LANDING_DOWNLOAD_URL=https://github.com/zhuhedong/zhi-stack/releases/latest
+# 无需设置：介绍页按钮默认进入 /download，发布流程会额外上传不带版本号的
+# InfoHub_macos_aarch64.dmg 等文件，releases/latest/download/<文件名> 始终指向最新版
 ```
 
 然后 `docker compose up -d` 重启。注意：服务器在中国大陆时，访问者打开 GitHub 可能较慢。

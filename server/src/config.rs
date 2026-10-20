@@ -74,6 +74,7 @@ impl WebUi {
 pub struct Settings {
     pub web_ui: WebUi,
     pub landing_download_url: Option<String>,
+    pub download_base_url: String,
     pub bind_addr: SocketAddr,
     pub frontend_dir: String,
     pub allowed_origins: Vec<String>,
@@ -91,6 +92,7 @@ impl Default for Settings {
         Self {
             web_ui: WebUi::Full,
             landing_download_url: None,
+            download_base_url: crate::download::DEFAULT_BASE.into(),
             allowed_origins: default_origins(bind_addr.port(), None),
             bind_addr,
             frontend_dir: "dist".into(),
@@ -143,6 +145,18 @@ impl Settings {
             None => None,
         };
         let web_ui = WebUi::parse(&var("WEB_UI").unwrap_or_default())?;
+        let download_base_url = match var("DOWNLOAD_BASE_URL") {
+            Some(u) => {
+                let ok = url::Url::parse(&u)
+                    .map(|p| matches!(p.scheme(), "http" | "https"))
+                    .unwrap_or(false);
+                if !ok {
+                    return Err("DOWNLOAD_BASE_URL 必须是完整的 http(s) 地址".into());
+                }
+                u
+            }
+            None => crate::download::DEFAULT_BASE.into(),
+        };
         let landing_download_url = match var("LANDING_DOWNLOAD_URL") {
             Some(u) => {
                 let parsed = url::Url::parse(&u)
@@ -190,6 +204,7 @@ impl Settings {
         Ok(Self {
             web_ui,
             landing_download_url,
+            download_base_url,
             bind_addr,
             frontend_dir: var("FRONTEND_DIR").unwrap_or_else(|| "dist".into()),
             allowed_origins,

@@ -100,7 +100,9 @@ DATABASE_URL=postgres://infohub:密码@db.example.com:5432/infohub?sslmode=verif
 | `landing` | 只在 `/` 和 `/index.html` 提供内置于程序的静态介绍页（产品简介、桌面客户端下载、版本号）；其他非 `/api` 路径（网页路由、`/assets/*` 等）一律 404 |
 | `off` | 不提供任何网页内容，非 `/api` 路径一律 404 |
 
-- `LANDING_DOWNLOAD_URL`：可选，介绍页上的"下载桌面客户端"按钮地址（必须是 http/https）；不设置时显示"下载地址未配置"。
+- `LANDING_DOWNLOAD_URL`：可选，覆盖介绍页"下载桌面客户端"按钮地址（必须是 http/https）；不设置时按钮指向内置的 `/download` 下载页（推荐）。
+- `DOWNLOAD_BASE_URL`：可选，`/download` 页安装包的地址前缀，默认 `https://github.com/zhuhedong/zhi-stack/releases/latest/download`；国内可换成镜像/OSS 地址，目录下需放同名文件（`InfoHub_macos_aarch64.dmg` 等）。
+- `/download` 页根据浏览器的 User-Agent / `Sec-CH-UA-Platform` 判断系统并给出对应安装包，支持 `?os=mac|win|linux` 手动指定；无 JavaScript。
 - `landing`/`off` 下 `ALLOWED_ORIGINS` 默认不再包含本机端口、Vite 和 `PUBLIC_URL`，只保留 Tauri 桌面端来源（`tauri://localhost` 等）：现有桌面端在 WebView 里用 fetch 调 API，依赖 CORS。显式设置的值仍然生效。
 - `/api/*` 在所有模式下不变。`/api/health` 仍返回 `initialized`，桌面客户端要靠它决定显示"创建主密码"还是"登录"。
 - 注意：`landing`/`off` 下没有网页版，**首次初始化（创建主密码、使用初始化令牌）和从备份恢复都只能通过桌面客户端完成**。
@@ -174,4 +176,4 @@ R2_SECRET_ACCESS_KEY=你的SecretAccessKey
 
 ## 桌面客户端
 
-安装包由 GitHub Actions 自动打包，发布流程和签名配置见 [desktop-release.md](desktop-release.md)。介绍页模式下建议设置 `LANDING_DOWNLOAD_URL=https://github.com/zhuhedong/zhi-stack/releases/latest`。
+安装包由 GitHub Actions 自动打包，发布流程和签名配置见 [desktop-release.md](desktop-release.md)。介绍页模式下无需设置 `LANDING_DOWNLOAD_URL`，按钮默认进入 `/download` 下载页。
