@@ -1273,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "infohub-server"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "aes-gcm",
  "argon2",
