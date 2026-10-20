@@ -178,3 +178,9 @@ R2_SECRET_ACCESS_KEY=你的SecretAccessKey
 ## 桌面客户端
 
 安装包由 GitHub Actions 自动打包，发布流程和签名配置见 [desktop-release.md](desktop-release.md)。介绍页模式下无需设置 `LANDING_DOWNLOAD_URL`，按钮默认进入 `/download` 下载页。
+
+### 下载页的实时版本与 CSP
+
+`WEB_UI=landing` 时 `/download` 会加载同源脚本 `/download.js`，在访客浏览器里请求 `https://api.github.com/repos/zhuhedong/zhi-stack/releases/latest`（4 秒超时），把页面上的版本号、发布日期和更新日志链接换成最新正式版；请求失败、超时或被限流时保持服务端渲染的版本号。下载链接仍是 `releases/latest/download/...`。
+
+为此 `/download` 单独下发的 CSP 只比全站 `WEB_CSP` 多一项 `connect-src https://api.github.com`；`script-src` 仍是 `'self'`，不允许内联脚本。首页介绍页依旧没有脚本、CSP 不变。CSP 由应用设置；如果反向代理（Caddy / Nginx）自己覆盖了 `Content-Security-Policy`，需要给 `/download` 放行同样的 `connect-src`。

@@ -22,6 +22,7 @@ nav .back{margin-left:auto;font-size:14px;color:#a9b3cc}nav .back:hover{color:#f
 main{flex:1;padding:72px 0 56px}
 h1{font-size:clamp(30px,5vw,46px);margin:0 0 14px;text-align:center;letter-spacing:-.01em;background:linear-gradient(90deg,#fff,#cfe0ff 40%,var(--cyan) 70%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
 .ver{text-align:center;color:var(--muted);margin:0 0 36px}
+.ver .date{margin-right:8px;font-size:.9em}
 .ver b{color:#fff;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 10px;border-radius:99px;background:rgba(122,162,255,.12);border:1px solid var(--line);margin:0 4px}
 .hero{text-align:center;padding:40px 24px;border-radius:24px;margin-bottom:40px;box-shadow:0 24px 60px rgba(0,0,0,.45),0 0 80px rgba(139,92,246,.12)}
 .detect{font-size:17px;color:#cfd6ea;margin:0 0 22px}.detect b{color:var(--cyan)}
@@ -54,7 +55,7 @@ footer a{color:var(--muted)}footer a:hover{color:#fff}
 </div></nav>
 <main><div class="wrap">
 <h1>下载桌面客户端</h1>
-<p class="ver">最新版本<b>v{{VERSION}}</b><a href="{{RELEASES}}" rel="noopener noreferrer">更新日志</a></p>
+<p class="ver">最新版本<b data-live-version>v{{VERSION}}</b><span class="date" data-live-date></span><a data-live-notes href="{{RELEASES}}" rel="noopener noreferrer">更新日志</a></p>
 <section class="hero glass">{{HERO}}</section>
 <h2>全部平台</h2>
 <div class="list">{{ROWS}}</div>
@@ -63,6 +64,7 @@ footer a{color:var(--muted)}footer a:hover{color:#fff}
 <p>当前安装包未做代码签名：macOS 首次打开如提示"无法验证开发者"，请右键应用选择"打开"，或执行 <code>xattr -dr com.apple.quarantine /Applications/infohub.app</code>；Windows 出现 SmartScreen 提示时点"更多信息 → 仍要运行"。</p>
 </div>
 </div></main>
-<footer><div class="wrap">新时代农民工笔记 · InfoHub v{{VERSION}} · <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">湘ICP备2023031880号-1</a></div></footer>
+<footer><div class="wrap">新时代农民工笔记 · InfoHub <span data-live-version>v{{VERSION}}</span> · <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">湘ICP备2023031880号-1</a></div></footer>
+<script src="/download.js" defer></script>
 </body>
 </html>
