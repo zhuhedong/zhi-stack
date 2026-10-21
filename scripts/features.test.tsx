@@ -79,3 +79,23 @@ test('list rows use the server reading estimate', () => {
   expect(itemReadingLabel({ readingMinutes: 0, content: '字'.repeat(4000) })).toBe('');
   expect(itemReadingLabel({ content: '字'.repeat(4000) })).toBe('约 10 分钟');
 });
+
+import { bookmarkletCode, pendingSaveUrl, workbenchBase } from '../src/lib/bookmarklet';
+test('bookmarklet opens the workbench without credentials', () => {
+  expect(workbenchBase('/api', 'https://hub.example.com/x')).toBe('https://hub.example.com/');
+  expect(workbenchBase('https://hub.example.com/api', 'tauri://localhost/')).toBe('https://hub.example.com/');
+  const code = bookmarkletCode('https://hub.example.com/');
+  expect(code.startsWith('javascript:')).toBe(true);
+  expect(code).not.toMatch(/token|password|Bearer/i);
+  const opened: string[] = [];
+  const fakeWindow = { open: (u: string) => (opened.push(u), {}) };
+  new Function('window', 'location', code.slice('javascript:'.length))(fakeWindow, {
+    href: 'https://news.example.org/a?b=1&c=中',
+  });
+  expect(opened).toHaveLength(1);
+  const search = new URL(opened[0]).search;
+  expect(pendingSaveUrl(search)).toBe('https://news.example.org/a?b=1&c=%E4%B8%AD');
+  expect(pendingSaveUrl('?save=javascript:alert(1)')).toBe('');
+  expect(pendingSaveUrl('?save=' + 'a'.repeat(3000))).toBe('');
+  expect(pendingSaveUrl('')).toBe('');
+});
