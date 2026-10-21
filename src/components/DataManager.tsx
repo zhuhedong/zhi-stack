@@ -1,4 +1,6 @@
 import { OfflineSettings } from './OfflineSettings';
+import { UpdateSettings } from './UpdateSettings';
+import { isDesktop } from '../lib/platform';
 import { ApiTokens } from './ApiTokens';
 import { NotificationSettings } from './NotificationSettings';
 import { ScheduledBackups } from './ScheduledBackups';
@@ -224,6 +226,7 @@ export function DataManager({
           notifications: '通知',
           tokens: 'API 令牌',
           offline: '离线与安装',
+          ...(isDesktop ? { updates: '客户端更新' } : {}),
         }).map(([key, label]) => (
           <button
             key={key}
@@ -413,6 +416,7 @@ export function DataManager({
         {tab === 'notifications' && <NotificationSettings />}
         {tab === 'tokens' && <ApiTokens />}
         {tab === 'offline' && <OfflineSettings />}
+        {tab === 'updates' && <UpdateSettings />}
         {tab === 'security' && (
           <Form
             className="maintenance-form"
