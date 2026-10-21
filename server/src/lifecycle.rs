@@ -24,10 +24,11 @@ pub async fn maintenance_gate(
     request: Request,
     next: Next,
 ) -> Response {
+    let path = request.uri().path();
     let exclusive = matches!(
-        request.uri().path(),
+        path,
         "/api/vault/password" | "/api/backup/export" | "/api/backup/restore"
-    );
+    ) || (path.starts_with("/api/backup/scheduled/") && path.ends_with("/restore"));
     if exclusive {
         let _guard = state.maintenance.write().await;
         next.run(request).await
