@@ -2753,3 +2753,8 @@ input[type='checkbox'] {
   font-style: italic;
   background: var(--color-hover);
 }
+.list-item-meta .reading-time {
+  margin-right: auto;
+  color: var(--color-muted);
+  font-size: 11px;
+}

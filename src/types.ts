@@ -21,6 +21,8 @@ export interface ItemData {
   environments?: { id: string; name: string; variables: Pair[] }[];
   activeEnvironment?: string;
   content?: string;
+  /** Server-computed estimate on list rows, which omit the body. */
+  readingMinutes?: number;
   author?: string;
   sourceName?: string;
   imagesCount?: number;
