@@ -211,3 +211,126 @@ test('chaining: worker evaluates and times out runaway patterns', async () => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
+
+const collection = () =>
+  ({
+    id: 'c1',
+    title: '订单服务',
+    summary: '',
+    data: {
+      fields: { baseUrl: 'https://api.example.com/v1' },
+      globalHeaders: [{ key: 'Authorization', value: 'Bearer secret-token', enabled: true }],
+      environments: [
+        {
+          id: 'e1',
+          name: '测试',
+          variables: [
+            { key: 'userId', value: '42', enabled: true },
+            { key: 'apiToken', value: 'tok-secret', enabled: true },
+          ],
+        },
+      ],
+      activeEnvironment: 'e1',
+      swaggerEndpoints: [
+        {
+          method: 'POST',
+          path: '/login',
+          summary: '登录',
+          tag: '认证',
+          customHeaders: [{ key: 'Content-Type', value: 'application/json', enabled: true }],
+          queryParams: [],
+          pathParams: [],
+          requestBody: '{"name":"a"}',
+          extractions: [{ id: 'x', enabled: true, source: 'json', expr: '$.data.token', variable: 'token' }],
+          assertions: [{ id: 'y', enabled: true, source: 'status', expr: '', op: 'eq', value: '200' }],
+        },
+        {
+          method: 'GET',
+          path: '/orders/{id}?expand=items',
+          summary: '订单详情',
+          tag: '订单',
+          customHeaders: [{ key: 'X-Trace', value: '{{trace}}', enabled: true }],
+          queryParams: [{ key: 'lang', value: 'zh', enabled: true, desc: '语言' }],
+          pathParams: [{ key: 'id', value: '{{userId}}', enabled: true }],
+          requestBody: '',
+        },
+        {
+          method: 'DELETE',
+          path: '/orders/{id}',
+          summary: '删除订单',
+          tag: '订单',
+          customHeaders: [],
+          queryParams: [],
+          pathParams: [{ key: 'id', value: '1', enabled: true }],
+          requestBody: '',
+        },
+      ],
+    },
+  }) as unknown as import('../src/types').Item;
+
+test('api export: OpenAPI 3 document', async () => {
+  const { toOpenApi } = await import('../src/lib/apiExport');
+  const doc = toOpenApi(collection());
+  expect(doc.openapi).toBe('3.0.3');
+  expect(doc.servers).toEqual([{ url: 'https://api.example.com/v1' }]);
+  expect(Object.keys(doc.paths).sort()).toEqual(['/login', '/orders/{id}']);
+  const get = doc.paths['/orders/{id}'].get as {
+    parameters: { name: string; in: string; example?: string }[];
+  };
+  expect(get.parameters.map((p) => `${p.in}:${p.name}`)).toEqual([
+    'path:id',
+    'query:expand',
+    'query:lang',
+    'header:Authorization',
+    'header:X-Trace',
+  ]);
+  expect(get.parameters.find((p) => p.name === 'Authorization')!.example).toBe('{{Authorization}}');
+  expect(JSON.stringify(doc)).not.toContain('secret');
+  expect(Object.keys(doc.paths['/orders/{id}'])).toEqual(['get', 'delete']);
+  const login = doc.paths['/login'].post as {
+    requestBody: { content: Record<string, { example: unknown }> };
+  };
+  expect(login.requestBody.content['application/json'].example).toEqual({ name: 'a' });
+  const ids = Object.values(doc.paths).flatMap((m) =>
+    Object.values(m).map((o) => (o as { operationId: string }).operationId),
+  );
+  expect(new Set(ids).size).toBe(ids.length);
+  expect(JSON.stringify(toOpenApi(collection(), { includeSecrets: true }))).toContain('secret-token');
+});
+
+test('api export: Postman v2.1 collection with tests from assertions', async () => {
+  const { toPostman } = await import('../src/lib/apiExport');
+  const doc = toPostman(collection()) as unknown as {
+    info: { schema: string };
+    item: {
+      name: string;
+      item: { name: string; request: Record<string, any>; event?: { script: { exec: string[] } }[] }[];
+    }[];
+    variable: { key: string; value: string }[];
+  };
+  expect(doc.info.schema).toBe('https://schema.getpostman.com/json/collection/v2.1.0/collection.json');
+  expect(doc.item.map((f) => f.name)).toEqual(['认证', '订单']);
+  const detail = doc.item[1].item[0].request;
+  expect(detail.url.raw).toBe('{{baseUrl}}/orders/:id?expand=items&lang=zh');
+  expect(detail.url.variable).toEqual([{ key: 'id', value: '{{userId}}' }]);
+  expect(detail.header.find((h: { key: string }) => h.key === 'Authorization').value).toBe(
+    '{{Authorization}}',
+  );
+  const login = doc.item[0].item[0];
+  expect(login.request.body).toEqual({
+    mode: 'raw',
+    raw: '{"name":"a"}',
+    options: { raw: { language: 'json' } },
+  });
+  const exec = login.event![0].script.exec.join('\n');
+  expect(exec).toContain('pm.environment.set("token"');
+  expect(exec).toContain('pm.response.json().data.token');
+  expect(exec).toContain('pm.test(');
+  expect(doc.variable).toEqual([
+    { key: 'baseUrl', value: 'https://api.example.com/v1' },
+    { key: 'userId', value: '42' },
+    { key: 'apiToken', value: '' },
+  ]);
+  // Generated test code must be valid JavaScript.
+  for (const line of login.event![0].script.exec) expect(() => new Function('pm', line)).not.toThrow();
+});

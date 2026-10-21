@@ -24,6 +24,7 @@ import { RequestHistory } from './RequestHistory';
 import { useProbe } from '../lib/useProbe';
 import { applyVariables, evaluateInWorker, type ChainOutcome } from '../lib/chaining';
 import { ChainRules, ChainSummary } from './ChainRules';
+import { toOpenApi, toPostman } from '../lib/apiExport';
 import { ListOrdered } from 'lucide-react';
 
 export function ApiWorkbench({
@@ -52,6 +53,23 @@ export function ApiWorkbench({
   const [outcome, setOutcome] = useState<ChainOutcome | null>(null);
   const [sequence, setSequence] = useState<{ label: string; ok: boolean; note: string }[] | null>(null);
   const [sequenceRunning, setSequenceRunning] = useState(false);
+  const [exportSecrets, setExportSecrets] = useState(false);
+  function exportCollection(format: 'openapi' | 'postman') {
+    const current = { ...item, data };
+    const name = (item.title || 'api').replace(/[\\/:*?"<>|]+/g, '_');
+    const doc =
+      format === 'openapi'
+        ? toOpenApi(current, { includeSecrets: exportSecrets })
+        : toPostman(current, { includeSecrets: exportSecrets });
+    exportText(
+      JSON.stringify(doc, null, 2),
+      format === 'openapi' ? `${name}.openapi.json` : `${name}.postman_collection.json`,
+    );
+    notify(
+      (format === 'openapi' ? '已导出 OpenAPI 3' : '已导出 Postman v2.1 集合') +
+        (exportSecrets ? '（包含敏感值）' : '（敏感请求头与变量已替换为 {{占位符}}）'),
+    );
+  }
   const persistence = usePersistentDraft({
     scope: `api:${item.id}`,
     kind: 'credential',
@@ -241,6 +259,25 @@ export function ApiWorkbench({
           </Select>
         </label>
         <button onClick={() => setTab('environments')}>管理环境</button>
+        <div className="export-collection">
+          <button disabled={!endpoints.length} onClick={() => exportCollection('openapi')}>
+            <Download size={13} /> OpenAPI 3
+          </button>
+          <button disabled={!endpoints.length} onClick={() => exportCollection('postman')}>
+            <Download size={13} /> Postman v2.1
+          </button>
+          <label
+            className="checkbox-row"
+            title="默认将 Authorization、Token、Cookie 等敏感值替换为 {{占位符}}"
+          >
+            <input
+              type="checkbox"
+              checked={exportSecrets}
+              onChange={(e) => setExportSecrets(e.target.checked)}
+            />
+            包含敏感值
+          </label>
+        </div>
       </div>
       <div className="tabs main-tabs">
         <button className={tab === 'swagger' ? 'active' : ''} onClick={() => setTab('swagger')}>
