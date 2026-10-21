@@ -6,6 +6,7 @@ import type { Item } from '../types';
 import { Modal } from './Modal';
 import { Markdown } from './LazyMarkdown';
 import { useConfirm } from '../lib/confirmation';
+import { VersionDiff } from './VersionDiff';
 
 interface Version {
   id: string;
@@ -29,6 +30,7 @@ export function VersionHistory({
   const [selected, setSelected] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<'preview' | 'diff'>('diff');
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -133,8 +135,30 @@ export function VersionHistory({
             <p className="muted">
               项目：{preview.project || '未归属'} · 标签：{preview.tags.join('、') || '无'}
             </p>
+            {preview.kind !== 'credential' && (
+              <div className="segmented version-mode" role="tablist" aria-label="查看方式">
+                <button
+                  role="tab"
+                  className={mode === 'diff' ? 'active' : ''}
+                  aria-selected={mode === 'diff'}
+                  onClick={() => setMode('diff')}
+                >
+                  与当前版本对比
+                </button>
+                <button
+                  role="tab"
+                  className={mode === 'preview' ? 'active' : ''}
+                  aria-selected={mode === 'preview'}
+                  onClick={() => setMode('preview')}
+                >
+                  版本预览
+                </button>
+              </div>
+            )}
             {preview.kind === 'credential' ? (
               <p>此版本包含当时的连接字段、请求头和接口参数，始终加密保存。</p>
+            ) : mode === 'diff' ? (
+              <VersionDiff before={preview} after={item} />
             ) : (
               <Markdown
                 text={preview.data.content || preview.data.cookbookNotes || preview.data.readme || '暂无正文'}
