@@ -8,8 +8,10 @@ import { WindowControls } from './components/WindowControls';
 import { isDesktop, isMac } from './lib/platform';
 import { applyReadingWidth } from './lib/readingWidth';
 import { applyTheme } from './lib/theme';
+import { registerServiceWorker } from './lib/offline';
 
 applyTheme();
+registerServiceWorker();
 applyReadingWidth();
 
 if (isDesktop) {

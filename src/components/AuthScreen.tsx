@@ -1,6 +1,17 @@
 import { Form } from './Form';
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
-import { ArrowRight, BookOpen, Radar, LockKeyhole, LoaderCircle, RefreshCw, ShieldCheck } from 'lucide-react';
+import {
+  ArrowRight,
+  BookOpen,
+  Radar,
+  LockKeyhole,
+  LoaderCircle,
+  RefreshCw,
+  ShieldCheck,
+  WifiOff,
+} from 'lucide-react';
+import { listOffline } from '../lib/offline';
+import { OfflineReader } from './OfflineReader';
 import {
   api,
   API_BASE,
@@ -39,6 +50,17 @@ export function AuthScreen({
   const [savedAddress, setSavedAddress] = useState(API_BASE);
   const [restore, setRestore] = useState(false);
   const [deploymentGuide, setDeploymentGuide] = useState(false);
+  const [offlineReader, setOfflineReader] = useState(false);
+  const [offlineCount, setOfflineCount] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void listOffline()
+      .then((list) => live && setOfflineCount(list.length))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [offlineReader]);
   const [restoring, setRestoring] = useState(false);
   useEffect(() => {
     if (!isDesktop) return;
@@ -288,6 +310,12 @@ export function AuthScreen({
                   重新连接服务
                 </button>
               )}
+              {offlineCount > 0 && (
+                <button className="text-button" onClick={() => setOfflineReader(true)}>
+                  <WifiOff size={13} />
+                  离线阅读（{offlineCount} 篇）
+                </button>
+              )}
               <div className="auth-server mono">服务地址：{API_BASE}</div>
               <button className="text-button" disabled={busy} onClick={() => setDeploymentGuide(true)}>
                 首次连接与部署指南
@@ -343,6 +371,7 @@ export function AuthScreen({
           </div>
         </Modal>
       )}
+      {offlineReader && <OfflineReader onClose={() => setOfflineReader(false)} />}
       {deploymentGuide && (
         <Modal title="首次连接与部署" onClose={() => setDeploymentGuide(false)}>
           <div className="modal-body">

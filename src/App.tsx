@@ -1,4 +1,4 @@
-import { pendingSaveUrl } from './lib/bookmarklet';
+import { saveOffline, sharedUrl } from './lib/offline';
 import { Form } from './components/Form';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Check, CircleAlert, LoaderCircle, LockKeyhole, X } from 'lucide-react';
@@ -461,7 +461,10 @@ function App() {
       setDetailError('');
       try {
         const value = await api<Item>('/items/' + selected.id, { signal: abort.signal });
-        if (!abort.signal.aborted) setItem(value);
+        if (!abort.signal.aborted) {
+          setItem(value);
+          void saveOffline(value).catch(() => {});
+        }
       } catch (e) {
         if (!abort.signal.aborted) setDetailError(errorMessage(e));
       } finally {
@@ -507,14 +510,14 @@ function App() {
     if (pillar === 'credential' && !unlocked) showModal('unlock');
     else showModal('add');
   };
-  // Link handed over by the bookmarklet (?save=…); consumed once the session is ready.
-  const savedFromBookmarklet = useRef(pendingSaveUrl(window.location.search));
+  // Link handed over by the bookmarklet (?save=…) or the PWA share target (?url= / ?text=); consumed once the session is ready.
+  const savedFromBookmarklet = useRef(sharedUrl(window.location.search));
   useEffect(() => {
     if (!authenticated || !savedFromBookmarklet.current) return;
     const url = savedFromBookmarklet.current;
     savedFromBookmarklet.current = '';
     const clean = new URL(window.location.href);
-    clean.searchParams.delete('save');
+    for (const key of ['save', 'url', 'text', 'title']) clean.searchParams.delete(key);
     window.history.replaceState(null, '', clean.toString());
     setIngestUrl(url);
     showModal('ingest');

@@ -1,3 +1,4 @@
+import { OfflineSettings } from './OfflineSettings';
 import { ApiTokens } from './ApiTokens';
 import { NotificationSettings } from './NotificationSettings';
 import { ScheduledBackups } from './ScheduledBackups';
@@ -222,6 +223,7 @@ export function DataManager({
           bookmarklet: '一键收藏',
           notifications: '通知',
           tokens: 'API 令牌',
+          offline: '离线与安装',
         }).map(([key, label]) => (
           <button
             key={key}
@@ -410,6 +412,7 @@ export function DataManager({
         {tab === 'bookmarklet' && <BookmarkletSettings />}
         {tab === 'notifications' && <NotificationSettings />}
         {tab === 'tokens' && <ApiTokens />}
+        {tab === 'offline' && <OfflineSettings />}
         {tab === 'security' && (
           <Form
             className="maintenance-form"
