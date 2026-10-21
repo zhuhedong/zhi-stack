@@ -89,6 +89,18 @@ pub async fn create(
     {
         return Err(AppError::bad("收录类型、项目或标签超出限制"));
     }
+    // API tokens never hold the vault key, so auto-detection (which may yield an
+    // encrypted API collection) resolves to a plain page or repository instead.
+    if auth.scopes.is_some() && input.kind.is_empty() {
+        let host = url::Url::parse(&input.url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_ascii_lowercase));
+        input.kind = if host.as_deref() == Some("github.com") {
+            "repo".into()
+        } else {
+            "knowledge".into()
+        };
+    }
     let encrypted = !["knowledge", "repo"].contains(&input.kind.as_str());
     if encrypted {
         auth.vault()?;
@@ -275,6 +287,7 @@ async fn next(state: &AppState) -> Result<bool> {
         Auth {
             token: String::new(),
             key,
+            scopes: None,
         }
     };
     if auth.key.is_none() {

@@ -32,6 +32,8 @@ pub type Sessions = Arc<Mutex<HashMap<String, Session>>>;
 pub struct Auth {
     pub token: String,
     pub key: Option<VaultKey>,
+    /// Some for personal API tokens (their scopes); None for login sessions.
+    pub scopes: Option<Vec<String>>,
 }
 impl Auth {
     pub fn vault(&self) -> Result<&VaultKey> {
@@ -229,6 +231,19 @@ pub async fn middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response> {
+    let raw = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or_default();
+    if raw.starts_with(crate::api_tokens::PREFIX) {
+        let auth =
+            crate::api_tokens::authenticate(&state, raw, request.method(), request.uri().path())
+                .await?;
+        request.extensions_mut().insert(auth);
+        return Ok(next.run(request).await);
+    }
     let token = bearer_hash(request.headers())?;
     let mut sessions = state.sessions.lock().await;
     sessions.retain(|_, s| s.expires > Instant::now());
@@ -242,6 +257,7 @@ pub async fn middleware(
     request.extensions_mut().insert(Auth {
         token,
         key: session.key.clone(),
+        scopes: None,
     });
     drop(sessions);
     Ok(next.run(request).await)

@@ -396,3 +396,54 @@ test('notification settings: create channel payload and edit keeps blank secrets
   expect(put.path).toBe('/notifications/channels/n1');
   expect(JSON.parse(String(put.init!.body)).secret).toEqual({});
 });
+
+test('api tokens: created token is shown once with chosen scopes', async () => {
+  const { ApiTokens } = await import('../src/components/ApiTokens');
+  const { ConfirmationProvider } = await import('../src/components/ConfirmationProvider');
+  handler = (path, init) =>
+    init?.method === 'POST'
+      ? { token: 'ihp_' + 'a'.repeat(64) }
+      : {
+          tokens: [
+            {
+              id: 't1',
+              name: '旧令牌',
+              prefix: 'ihp_abcdef',
+              scopes: ['read'],
+              createdAt: '2026-10-01T00:00:00Z',
+              expired: false,
+              revokedAt: null,
+            },
+          ],
+        };
+  const host = document.createElement('div');
+  document.body.append(host);
+  await act(async () =>
+    createRoot(host).render(
+      <ConfirmationProvider>
+        <ApiTokens />
+      </ConfirmationProvider>,
+    ),
+  );
+  await flush();
+  expect(host.textContent).toContain('ihp_abcdef…');
+  expect(host.textContent).toContain('从未使用');
+  await act(async () => input(host.querySelector<HTMLInputElement>('input:not([type])')!, 'MCP'));
+  const boxes = [...host.querySelectorAll<HTMLInputElement>('input[type=checkbox]')];
+  await act(async () => boxes[1].click());
+  await act(async () =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent === '创建令牌')!.click(),
+  );
+  await flush();
+  const post = calls.find((c) => c.init?.method === 'POST')!;
+  expect(JSON.parse(String(post.init!.body))).toEqual({
+    name: 'MCP',
+    scopes: ['read', 'write'],
+    expiresInDays: 90,
+  });
+  expect(host.querySelector('.token-created code')!.textContent).toBe('ihp_' + 'a'.repeat(64));
+  await act(async () =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent === '我已保存')!.click(),
+  );
+  expect(host.querySelector('.token-created')).toBeNull();
+});
