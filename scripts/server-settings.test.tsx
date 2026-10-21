@@ -16,6 +16,10 @@ vi.mock('../src/lib/platform', () => ({ isDesktop: true }));
 vi.mock('../src/lib/api', () => ({
   ...mocks,
   API_BASE: 'http://127.0.0.1:3210/api',
+  storedToken: () => '',
+  restoredPending: () => false,
+  takeRestored: () => false,
+  markRestored: vi.fn(),
   errorMessage: (e: Error) => e.message,
 }));
 vi.mock('../src/lib/server', async (original) => ({

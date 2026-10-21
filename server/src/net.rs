@@ -66,6 +66,27 @@ fn is_public(ip: IpAddr) -> bool {
         }
     }
 }
+/// 198.18.0.0/15 is the benchmarking range that proxy tools (Clash/mihomo,
+/// Surge, sing-box TUN "fake-ip" mode) hand out instead of real addresses.
+fn is_fake_ip(ip: IpAddr) -> bool {
+    let v4 = match ip {
+        IpAddr::V4(v) => Some(v),
+        IpAddr::V6(v) => v.to_ipv4_mapped(),
+    };
+    v4.is_some_and(|v| {
+        let [a, b, _, _] = v.octets();
+        a == 198 && (b == 18 || b == 19)
+    })
+}
+fn blocked_address_message(host: &str, mut ips: impl Iterator<Item = IpAddr>) -> String {
+    if ips.any(is_fake_ip) {
+        format!(
+            "{host} 被解析到 198.18.0.0/15（代理软件 fake-ip / TUN 模式分配的虚拟地址），服务端无法确认真实地址。请让服务端使用真实 DNS（关闭该机器上代理的 fake-ip 模式或为其设置直连 DNS），或在服务端 ALLOWED_PRIVATE_HOSTS 中显式加入 {host}"
+        )
+    } else {
+        "该地址属于内网或保留网段；请在服务端 ALLOWED_PRIVATE_HOSTS 中显式配置目标主机".into()
+    }
+}
 impl Network {
     pub async fn fetch(
         &self,
@@ -101,9 +122,10 @@ impl Network {
                 .any(|h| h.eq_ignore_ascii_case(&host))
                 && addresses.iter().any(|a| !is_public(a.ip()))
             {
-                return Err(AppError::bad(
-                    "该地址属于内网或保留网段；请在服务端 ALLOWED_PRIVATE_HOSTS 中显式配置目标主机",
-                ));
+                return Err(AppError::bad(blocked_address_message(
+                    &host,
+                    addresses.iter().map(|a| a.ip()),
+                )));
             }
             let client = reqwest::Client::builder()
                 .no_proxy()
@@ -235,6 +257,19 @@ pub fn request_headers(pairs: &[HeaderPair]) -> Result<HeaderMap> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn explains_proxy_fake_ip_addresses() {
+        let fake =
+            blocked_address_message("github.com", ["198.18.0.1".parse().unwrap()].into_iter());
+        assert!(
+            fake.contains("fake-ip")
+                && fake.contains("ALLOWED_PRIVATE_HOSTS")
+                && fake.contains("github.com")
+        );
+        assert!(is_fake_ip("::ffff:198.19.3.4".parse().unwrap()));
+        let lan = blocked_address_message("nas", ["192.168.1.2".parse().unwrap()].into_iter());
+        assert!(!lan.contains("fake-ip") && lan.contains("ALLOWED_PRIVATE_HOSTS"));
+    }
     #[test]
     fn prevents_ssrf_and_protocol_confusion() {
         for ip in [

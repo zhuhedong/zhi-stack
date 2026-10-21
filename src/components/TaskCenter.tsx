@@ -1,3 +1,4 @@
+import { formatDateTime } from '../lib/format';
 import { useEffect, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
 import type { Item } from '../types';
@@ -13,6 +14,8 @@ interface Job {
   phase: string;
   attempts: number;
   createdAt: string;
+  /** Last state change (latest attempt); absent from older servers. */
+  updatedAt?: string;
 }
 const statuses: Record<string, string> = {
   queued: '排队中',
@@ -115,7 +118,7 @@ export function TaskCenter({
                   </span>
                 </div>
                 <p className="muted">
-                  {job.phase} · 已执行 {job.attempts} 次 · {new Date(job.createdAt).toLocaleString()}
+                  {job.phase} · 已执行 {job.attempts} 次 · {formatDateTime(job.updatedAt ?? job.createdAt)}
                 </p>
                 {job.output?.error && <p className="error">{job.output.error}</p>}
                 {job.output?.warnings?.map((warning, i) => (

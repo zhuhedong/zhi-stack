@@ -1,3 +1,4 @@
+import { formatDateTime } from '../lib/format';
 import { Code } from './Code';
 import { useEffect, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
@@ -112,7 +113,7 @@ export function RequestHistory({ itemId }: { itemId: string }) {
               {row.method || '请求'} {row.url || '已取消'}
             </strong>
             <small>
-              {row.environment || '默认'} · {new Date(row.createdAt).toLocaleString()} ·{' '}
+              {row.environment || '默认'} · {formatDateTime(row.createdAt)} ·{' '}
               {statuses[row.status] || row.status}
               {row.httpStatus ? ` · HTTP ${row.httpStatus}` : ''}
             </small>
@@ -148,7 +149,11 @@ export function RequestHistory({ itemId }: { itemId: string }) {
               {probe.sending && <button onClick={probe.cancel}>取消请求</button>}
             </div>
           </div>
-          <Code className="response-body" language="json" code={JSON.stringify(selected.request || {}, null, 2)} />
+          <Code
+            className="response-body"
+            language="json"
+            code={JSON.stringify(selected.request || {}, null, 2)}
+          />
           <h4>{probe.response ? '本次响应' : '历史响应'}</h4>
           {(probe.response || selected.response)?.truncated && (
             <p className="info">

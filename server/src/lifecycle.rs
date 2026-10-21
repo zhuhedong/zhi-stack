@@ -183,23 +183,39 @@ pub async fn drafts(
         .bind(auth.key.is_some()).fetch_all(&state.db).await?;
     Ok(Json(json!(rows)))
 }
+/// payload, encrypted, base_revision, generation, updated_at
+type DraftRow = (
+    Vec<u8>,
+    bool,
+    Option<i64>,
+    i64,
+    chrono::DateTime<chrono::Utc>,
+);
+#[derive(Deserialize)]
+pub struct DraftLookup {
+    optional: Option<bool>,
+}
 pub async fn draft(
     State(state): State<AppState>,
     Extension(auth): Extension<Auth>,
     Path(id): Path<String>,
+    Query(lookup): Query<DraftLookup>,
 ) -> Result<Json<Value>> {
-    let (payload, encrypted, revision, generation, updated_at): (
-        Vec<u8>,
-        bool,
-        Option<i64>,
-        i64,
-        chrono::DateTime<chrono::Utc>,
-    ) = sqlx::query_as(
+    let row: Option<DraftRow> = sqlx::query_as(
         "SELECT payload,encrypted,base_revision,generation,updated_at FROM drafts WHERE id=$1",
     )
     .bind(&id)
-    .fetch_one(&state.db)
+    .fetch_optional(&state.db)
     .await?;
+    // `?optional=1` lets clients probe for a recovery draft without a 404 in
+    // the console; without it a missing draft is still 404 as before.
+    let Some((payload, encrypted, revision, generation, updated_at)) = row else {
+        return if lookup.optional.unwrap_or(false) {
+            Ok(Json(Value::Null))
+        } else {
+            Err(sqlx::Error::RowNotFound.into())
+        };
+    };
     let bytes = if encrypted {
         crypto::decrypt(auth.vault()?, &payload, &format!("draft:{id}"))?
     } else {

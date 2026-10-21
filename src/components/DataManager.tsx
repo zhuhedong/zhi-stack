@@ -1,7 +1,8 @@
+import { formatDateTime } from '../lib/format';
 import { Form } from './Form';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArchiveRestore, Download, KeyRound, LoaderCircle, RefreshCw, Trash2 } from 'lucide-react';
-import { api, downloadBlob, errorMessage, request, setToken } from '../lib/api';
+import { api, downloadBlob, errorMessage, markRestored, request, setToken } from '../lib/api';
 import type { Item } from '../types';
 import { Modal } from './Modal';
 
@@ -44,6 +45,7 @@ export function RestoreForm({
     try {
       await api('/backup/restore', { method: 'POST', body: data });
       setToken('');
+      markRestored();
       setPassword('');
       setCurrent('');
       // Local non-sensitive draft caches belong to the previous database state.
@@ -69,12 +71,19 @@ export function RestoreForm({
         </p>
         <label>
           备份文件
-          <input
-            type="file"
-            accept=".infohub"
-            required
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-          />
+          <span className="file-picker">
+            <input
+              type="file"
+              accept=".infohub"
+              required
+              className="file-picker-input"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
+            <span className="file-picker-button" aria-hidden="true">
+              选择文件
+            </span>
+            <span className="file-picker-name">{file ? file.name : '未选择文件'}</span>
+          </span>
         </label>
         <label>
           备份时的主密码
@@ -276,8 +285,7 @@ export function DataManager({
                 runs.map((run) => (
                   <div className="maintenance-row" key={run.id}>
                     <span>
-                      {run.operation === 'backup' ? '备份' : '恢复'} ·{' '}
-                      {new Date(run.created_at).toLocaleString()}
+                      {run.operation === 'backup' ? '备份' : '恢复'} · {formatDateTime(run.created_at)}
                     </span>
                     <strong>
                       {
@@ -311,7 +319,7 @@ export function DataManager({
                 <div>
                   <strong>{item.title}</strong>
                   <p className="muted">
-                    {item.project || '未归属项目'} · {new Date(item.updatedAt).toLocaleString()}
+                    {item.project || '未归属项目'} · {formatDateTime(item.updatedAt)}
                   </p>
                 </div>
                 <div className="inline-actions">

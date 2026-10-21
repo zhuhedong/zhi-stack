@@ -1,3 +1,4 @@
+import { formatDateTime } from '../lib/format';
 import { useEffect, useState } from 'react';
 import { History, RotateCcw } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
@@ -122,7 +123,7 @@ export function VersionHistory({
                   } as Record<string, string>
                 )[v.reason] || v.reason}
               </span>
-              <small>{new Date(v.createdAt).toLocaleString()}</small>
+              <small>{formatDateTime(v.createdAt)}</small>
             </button>
           ))}
         </div>
