@@ -1,3 +1,4 @@
+import { ImportCenter } from './ImportCenter';
 import { BookmarkletSettings } from './BookmarkletSettings';
 import { formatDateTime } from '../lib/format';
 import { Form } from './Form';
@@ -211,6 +212,7 @@ export function DataManager({
         {Object.entries({
           backup: '备份与恢复',
           trash: '回收站',
+          imports: '导入',
           security: '主密码',
           bookmarklet: '一键收藏',
         }).map(([key, label]) => (
@@ -395,6 +397,7 @@ export function DataManager({
             )}
           </>
         )}
+        {tab === 'imports' && <ImportCenter onChanged={onChanged} />}
         {tab === 'bookmarklet' && <BookmarkletSettings />}
         {tab === 'security' && (
           <Form

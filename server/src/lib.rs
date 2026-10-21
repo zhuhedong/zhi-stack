@@ -224,6 +224,7 @@ pub fn router(state: AppState) -> Router {
         .route("/subscriptions", get(subscriptions::all))
         .route("/feeds", get(feeds::list).post(feeds::add))
         .route("/highlights", get(highlights::recent))
+        .route("/import/existing", post(library::import_existing))
         .route(
             "/items/{id}/highlights",
             get(highlights::list).post(highlights::create),
