@@ -478,3 +478,64 @@ mod reading_tests {
         );
     }
 }
+
+#[derive(Deserialize)]
+pub struct ExistingQuery {
+    #[serde(default)]
+    pub urls: Vec<String>,
+}
+fn host_of(url: &str) -> String {
+    let candidate = if url.contains("://") {
+        url.to_string()
+    } else {
+        format!("https://{url}")
+    };
+    url::Url::parse(&candidate)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_lowercase))
+        .unwrap_or_default()
+}
+/// Dedupe keys for the import preview: which article URLs already exist, and
+/// (when the vault is unlocked) `vault|title|host|username` / `api|title` keys
+/// of existing credentials. Decryption stays on the server; only keys return.
+pub async fn import_existing(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<Auth>,
+    Json(input): Json<ExistingQuery>,
+) -> Result<Json<Value>> {
+    if input.urls.len() > 20000 {
+        return Err(AppError::bad("一次最多检查 20000 个地址"));
+    }
+    let urls: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT url FROM items WHERE kind='knowledge' AND deleted_at IS NULL AND url=ANY($1)",
+    )
+    .bind(&input.urls)
+    .fetch_all(&state.db)
+    .await?;
+    let mut vault = Vec::new();
+    if let Some(key) = auth.key.as_ref() {
+        let rows: Vec<ItemRow> =
+            sqlx::query_as("SELECT * FROM items WHERE kind='credential' AND deleted_at IS NULL")
+                .fetch_all(&state.db)
+                .await?;
+        for row in rows {
+            let title = row.title.to_lowercase();
+            let Ok(item) = row.public(Some(key), true) else {
+                continue;
+            };
+            if item.category == "http" {
+                vault.push(format!("api|{title}"));
+            }
+            let fields = &item.data["fields"];
+            let text = |k: &str| fields[k].as_str().unwrap_or_default().to_string();
+            vault.push(format!(
+                "vault|{title}|{}|{}",
+                host_of(&text("url")),
+                text("username").to_lowercase()
+            ));
+        }
+    }
+    Ok(Json(
+        json!({"urls":urls,"vault":vault,"unlocked":auth.key.is_some()}),
+    ))
+}

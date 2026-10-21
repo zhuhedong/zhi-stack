@@ -118,3 +118,198 @@ test('selecting text offers colors and saves an anchored highlight; lost ones ar
   act(() => root.unmount());
   host.remove();
 });
+
+import { dedupe, htmlToMarkdown, parseCsv, parseImport, splitPostmanUrl } from '../src/lib/importers';
+
+test('CSV parser handles quotes, commas and newlines', () => {
+  expect(parseCsv('a,b\n"x, y","say ""hi""\nthere"\r\n')).toEqual([
+    ['a', 'b'],
+    ['x, y', 'say "hi"\nthere'],
+  ]);
+});
+
+test('browser bookmarks and Pocket exports become articles; folders become tags', () => {
+  const html = `<!DOCTYPE NETSCAPE-Bookmark-file-1><DL><p><DT><H3>书签栏</H3><DL><p><DT><H3>Rust</H3><DL><p>
+    <DT><A HREF="https://tokio.rs/?utm_source=x#top" ADD_DATE="1">Tokio</A>
+    <DT><A HREF="javascript:alert(1)">bad</A></DL></DL>
+    <DT><A HREF="https://example.com/" TAGS="a,b">Ex</A></DL>`;
+  const result = parseImport('bookmarks.html', html);
+  expect(result.format).toBe('bookmarks');
+  expect(result.candidates.map((c) => [c.item.title, c.item.url, c.item.tags])).toEqual([
+    ['Tokio', 'https://tokio.rs/', ['Rust']],
+    ['Ex', 'https://example.com/', ['a', 'b']],
+  ]);
+  expect(result.candidates[0].linkOnly).toBe(true);
+  const csv = parseImport(
+    'pocket.csv',
+    'title,url,time_added,tags,status\nHello,https://a.example/p,1,x|y,unread\n',
+  );
+  expect(csv.format).toBe('pocket');
+  expect(csv.candidates[0].item.tags).toEqual(['x', 'y']);
+});
+
+test('Omnivore and Wallabag JSON keep bodies; HTML is converted, never kept raw', () => {
+  const omnivore = parseImport(
+    'omnivore.json',
+    JSON.stringify([
+      {
+        title: 'O',
+        url: 'https://o.example/1',
+        labels: [{ name: 'L' }],
+        description: 'd',
+        content: '# Body',
+      },
+    ]),
+  );
+  expect(omnivore.format).toBe('omnivore');
+  expect(omnivore.candidates[0].item).toMatchObject({
+    tags: ['L'],
+    summary: 'd',
+    data: { content: '# Body' },
+  });
+  const wallabag = parseImport(
+    'wallabag.json',
+    JSON.stringify([
+      {
+        is_archived: 0,
+        title: 'W',
+        url: 'https://w.example/',
+        tags: ['t'],
+        content:
+          '<h2>标题</h2><p>正文 <a href="https://x.example">链接</a><script>alert(1)</script><img src="javascript:x" onerror="x"></p>',
+      },
+    ]),
+  );
+  expect(wallabag.format).toBe('wallabag');
+  expect(wallabag.candidates[0].item.data.content).toBe('## 标题\n\n正文 [链接](https://x.example/)');
+  expect(htmlToMarkdown('<pre><code>a < b</code></pre>')).toBe('```\na < b\n```');
+});
+
+test('Bitwarden and 1Password exports become encrypted-vault account items', () => {
+  const bw = parseImport(
+    'bitwarden.json',
+    JSON.stringify({
+      encrypted: false,
+      folders: [],
+      items: [
+        {
+          type: 1,
+          name: 'GitHub',
+          notes: 'n',
+          login: {
+            username: 'me',
+            password: 'pw',
+            totp: 'otpauth://totp/x?secret=JBSWY3DPEHPK3PXP',
+            uris: [{ uri: 'https://github.com/login' }],
+          },
+          fields: [{ name: 'PIN', value: '1234' }],
+        },
+        { type: 2, name: 'secure note' },
+      ],
+    }),
+  );
+  expect(bw.format).toBe('bitwarden');
+  expect(bw.candidates).toHaveLength(1);
+  expect(bw.candidates[0].key).toBe('vault|github|github.com|me');
+  expect(bw.candidates[0].item).toMatchObject({
+    kind: 'credential',
+    category: 'account',
+    url: '',
+    data: {
+      typeKey: 'account',
+      fields: {
+        username: 'me',
+        password: 'pw',
+        PIN: '1234',
+        totp: 'otpauth://totp/x?secret=JBSWY3DPEHPK3PXP',
+      },
+    },
+  });
+  expect(() => parseImport('bw.json', JSON.stringify({ encrypted: true, items: [] }))).toThrow(/未加密/);
+  const bwCsv = parseImport(
+    'bw.csv',
+    'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n,,login,Mail,,,,https://mail.example,u,p,\n',
+  );
+  expect(bwCsv.candidates[0].item.data.fields).toMatchObject({ url: 'https://mail.example', password: 'p' });
+  const op = parseImport(
+    '1password.csv',
+    'Title,Url,Username,Password,OTPAuth,Notes\nAWS,aws.amazon.com,root,s3cret,,备注\n',
+  );
+  expect(op.format).toBe('onepassword');
+  expect(op.candidates[0].key).toBe('vault|aws|aws.amazon.com|root');
+});
+
+test('Postman v2.1 collections become an API workbench item', () => {
+  const collection = {
+    info: {
+      name: 'Shop API',
+      schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+    },
+    auth: { type: 'bearer', bearer: [{ key: 'token', value: '{{token}}' }] },
+    variable: [
+      { key: 'baseUrl', value: 'https://api.shop.example' },
+      { key: 'token', value: 'abc' },
+    ],
+    item: [
+      {
+        name: 'Users',
+        item: [
+          {
+            name: 'Get user',
+            request: {
+              method: 'GET',
+              url: { raw: '{{baseUrl}}/users/:id?expand=1', query: [{ key: 'expand', value: '1' }] },
+            },
+          },
+          {
+            name: 'Create',
+            request: {
+              method: 'POST',
+              header: [{ key: 'Content-Type', value: 'application/json' }],
+              body: { mode: 'raw', raw: '{"a":1}' },
+              url: '{{baseUrl}}/users',
+            },
+          },
+        ],
+      },
+      { name: 'Health', request: { method: 'GET', url: 'https://status.example/health' } },
+    ],
+  };
+  const result = parseImport('shop.postman_collection.json', JSON.stringify(collection));
+  expect(result.format).toBe('postman');
+  const item = result.candidates[0].item;
+  expect(item).toMatchObject({ kind: 'credential', category: 'http', title: 'Shop API' });
+  expect(item.data.fields!.baseUrl).toBe('{{baseUrl}}');
+  expect(item.data.globalHeaders).toEqual([
+    { key: 'Authorization', value: 'Bearer {{token}}', enabled: true },
+  ]);
+  expect(item.data.environments![0].variables.map((v) => v.key)).toEqual(['baseUrl', 'token']);
+  const [get, create, health] = item.data.swaggerEndpoints!;
+  expect(get).toMatchObject({
+    method: 'GET',
+    path: '/users/{id}',
+    tag: 'Users',
+    pathParams: [{ key: 'id' }],
+    queryParams: [{ key: 'expand', value: '1' }],
+  });
+  expect(create).toMatchObject({ method: 'POST', requestBody: '{"a":1}' });
+  expect(health.baseUrl).toBe('https://status.example');
+  expect(splitPostmanUrl('https://h.example:8080/a/:b?c=d%20e')).toEqual({
+    base: 'https://h.example:8080',
+    path: '/a/{b}',
+    query: [{ key: 'c', value: 'd e', enabled: true }],
+  });
+});
+
+test('dedupe marks existing items and repeats within the file', () => {
+  const { candidates } = parseImport(
+    'b.html',
+    '<DL><DT><A HREF="https://a.example/">A</A><DT><A HREF="https://a.example/#x">A again</A><DT><A HREF="https://b.example/">B</A></DL>',
+  );
+  expect(dedupe(candidates, new Set(['url:https://b.example/'])).map((r) => r.duplicate)).toEqual([
+    '',
+    'file',
+    'existing',
+  ]);
+  expect(() => parseImport('x.txt', 'hello')).toThrow(/无法识别/);
+});

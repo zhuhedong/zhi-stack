@@ -2885,3 +2885,38 @@ input[type='checkbox'] {
   margin: 0;
   white-space: pre-wrap;
 }
+.import-preview {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.import-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1.2fr) minmax(0, 1fr) 72px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+}
+.import-row.head {
+  position: sticky;
+  top: 0;
+  background: var(--color-dialog);
+  font-weight: 600;
+}
+.import-row.dup {
+  opacity: 0.6;
+}
+.import-title,
+.import-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
