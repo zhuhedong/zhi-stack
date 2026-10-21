@@ -36,7 +36,7 @@ pub fn digest(bytes: &[u8]) -> String {
 
 fn object_path(key: &str) -> Result<Path> {
     let valid = key.split_once('/').is_some_and(|(kind, id)| {
-        matches!(kind, "attachments" | "media" | "checks")
+        matches!(kind, "attachments" | "media" | "checks" | "backups")
             && Uuid::parse_str(id).is_ok_and(|parsed| parsed.to_string() == id)
     });
     if !valid {
@@ -224,6 +224,29 @@ impl FileStorage {
         self.sync_local(key).await
     }
 
+    /// Large objects (backups): no attachment size cap; the caller bounds the size.
+    pub async fn put_large(&self, key: &str, bytes: Vec<u8>) -> Result<()> {
+        self.store
+            .put(&object_path(key)?, bytes.into())
+            .await
+            .map_err(|_| unavailable("write file"))?;
+        self.sync_local(key).await
+    }
+    pub async fn read_large(&self, key: &str, max: u64) -> Result<Vec<u8>> {
+        let result = self
+            .store
+            .get(&object_path(key)?)
+            .await
+            .map_err(|_| unavailable("read file"))?;
+        if result.meta.size > max {
+            return Err(unavailable("verify file size"));
+        }
+        Ok(result
+            .bytes()
+            .await
+            .map_err(|_| unavailable("read file body"))?
+            .to_vec())
+    }
     pub async fn read(&self, key: &str, size: i64, hash: &str) -> Result<Vec<u8>> {
         let result = self
             .store

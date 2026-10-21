@@ -17,6 +17,8 @@ pub mod model;
 pub mod net;
 pub mod projects;
 pub mod routes;
+pub mod scheduled;
+pub mod service_key;
 pub mod storage;
 pub mod subscriptions;
 
@@ -58,6 +60,7 @@ pub struct AppState {
     pub jobs_notify: Arc<Notify>,
     pub subscriptions_notify: Arc<Notify>,
     pub feeds_notify: Arc<Notify>,
+    pub backups_notify: Arc<Notify>,
     pub github_api_base: String,
 }
 impl AppState {
@@ -91,6 +94,7 @@ impl AppState {
             jobs_notify: Default::default(),
             subscriptions_notify: Default::default(),
             feeds_notify: Default::default(),
+            backups_notify: Default::default(),
             github_api_base: settings.github_api_base.clone(),
             settings: Arc::new(settings),
         }
@@ -224,6 +228,16 @@ pub fn router(state: AppState) -> Router {
         .route("/subscriptions", get(subscriptions::all))
         .route("/feeds", get(feeds::list).post(feeds::add))
         .route("/highlights", get(highlights::recent))
+        .route(
+            "/backup/schedule",
+            get(scheduled::status).put(scheduled::update),
+        )
+        .route("/backup/schedule/run", post(scheduled::run_now))
+        .route(
+            "/backup/scheduled/{id}",
+            axum::routing::delete(scheduled::delete),
+        )
+        .route("/backup/scheduled/{id}/restore", post(scheduled::restore))
         .route("/import/existing", post(library::import_existing))
         .route(
             "/items/{id}/highlights",

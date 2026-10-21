@@ -84,7 +84,7 @@ pub async fn change_password(
     let old = auth::verify(&state, ip, input.current_password).await?;
     let mut salt = vec![0; 16];
     rand::thread_rng().fill_bytes(&mut salt);
-    let new = crypto::derive(input.new_password, salt.clone()).await?;
+    let new = crypto::derive(input.new_password.clone(), salt.clone()).await?;
     let verifier = crypto::encrypt(&new, b"InfoHub vault verification", "infohub-vault-v1")?;
     let mut tx = state.db.begin().await?;
     sqlx::query("SELECT set_config('infohub.skip_snapshot','on',true)")
@@ -203,6 +203,7 @@ pub async fn change_password(
         .bind(verifier)
         .execute(&mut *tx)
         .await?;
+    crate::scheduled::rekey(&mut tx, &input.new_password).await?;
     tx.commit().await?;
     state.sessions.lock().await.clear();
     state.file_cleanup.notify_one();
@@ -272,7 +273,7 @@ impl FrameReader {
     }
 }
 
-async fn audit_schema(state: &AppState) -> Result<()> {
+pub(crate) async fn audit_schema(state: &AppState) -> Result<()> {
     let actual: Vec<String> =
         sqlx::query_scalar("SELECT tablename FROM pg_tables WHERE schemaname=current_schema()")
             .fetch_all(&state.db)
@@ -284,6 +285,8 @@ async fn audit_schema(state: &AppState) -> Result<()> {
                 "file_objects",
                 "backup_runs",
                 "item_search",
+                "backup_schedule",
+                "scheduled_backups",
             ]
             .contains(&t.as_str())
     }) {
@@ -366,15 +369,25 @@ pub async fn export(
     Ok(response)
 }
 async fn make_backup(state: &AppState, password: String) -> Result<(tempfile::NamedTempFile, u64)> {
-    let temp = tempfile::NamedTempFile::new().map_err(io_error)?;
-    let mut file = File::from_std(temp.reopen().map_err(io_error)?);
     let mut salt = vec![0; 16];
     rand::thread_rng().fill_bytes(&mut salt);
+    let key = crypto::derive(password, salt.clone()).await?;
+    make_backup_with_key(state, key, &salt).await
+}
+/// Writes a backup with an already derived key (`Argon2(password, salt)`), so
+/// it restores with the same master password through the normal restore path.
+pub(crate) async fn make_backup_with_key(
+    state: &AppState,
+    key: crypto::VaultKey,
+    salt: &[u8],
+) -> Result<(tempfile::NamedTempFile, u64)> {
+    let temp = tempfile::NamedTempFile::new().map_err(io_error)?;
+    let mut file = File::from_std(temp.reopen().map_err(io_error)?);
     file.write_all(MAGIC).await.map_err(io_error)?;
-    file.write_all(&salt).await.map_err(io_error)?;
+    file.write_all(salt).await.map_err(io_error)?;
     let mut writer = FrameWriter {
         file,
-        key: crypto::derive(password, salt).await?,
+        key,
         count: 0,
         hash: Sha256::new(),
     };
@@ -505,7 +518,11 @@ pub async fn restore(
     ))
 }
 
-async fn load_backup(state: &AppState, path: &std::path::Path, password: String) -> Result<()> {
+pub(crate) async fn load_backup(
+    state: &AppState,
+    path: &std::path::Path,
+    password: String,
+) -> Result<()> {
     let mut file = File::open(path).await.map_err(io_error)?;
     let mut magic = vec![0; MAGIC.len()];
     file.read_exact(&mut magic).await.map_err(|_| invalid())?;

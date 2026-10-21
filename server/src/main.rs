@@ -40,6 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     infohub_server::jobs::initialize(&state).await?;
     infohub_server::subscriptions::initialize(&state).await?;
     infohub_server::feeds::initialize(&state).await?;
+    infohub_server::scheduled::initialize(&state).await?;
     let address = config.settings.bind_addr;
     let listener = tokio::net::TcpListener::bind(&address).await?;
     tracing::info!(%address, "InfoHub connected to PostgreSQL; server ready");
@@ -65,6 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let jobs_worker = tokio::spawn(infohub_server::jobs::worker(state.clone()));
     let subscriptions_worker = tokio::spawn(infohub_server::subscriptions::worker(state.clone()));
     let feeds_worker = tokio::spawn(infohub_server::feeds::worker(state.clone()));
+    let backups_worker = tokio::spawn(infohub_server::scheduled::worker(state.clone()));
     let result = axum::serve(
         listener,
         router(state).into_make_service_with_connect_info::<SocketAddr>(),
@@ -75,6 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     jobs_worker.abort();
     subscriptions_worker.abort();
     feeds_worker.abort();
+    backups_worker.abort();
     result?;
     Ok(())
 }

@@ -1,3 +1,4 @@
+import { ScheduledBackups } from './ScheduledBackups';
 import { PasswordHealth } from './PasswordHealth';
 import { ImportCenter } from './ImportCenter';
 import { BookmarkletSettings } from './BookmarkletSettings';
@@ -314,6 +315,7 @@ export function DataManager({
               )}
             </div>
             <RestoreForm initialized onRestored={onRestored} onBusy={setBusy} />
+            <ScheduledBackups onRestored={onRestored} />
           </>
         )}
         {tab === 'trash' && (
