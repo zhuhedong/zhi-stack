@@ -16,6 +16,9 @@ export interface Endpoint {
   queryParams: Pair[];
   pathParams: Pair[];
   requestBody: string;
+  /** Post-response variable extraction rules (see lib/chaining). */
+  extractions?: import('./lib/chaining').Extraction[];
+  assertions?: import('./lib/chaining').Assertion[];
 }
 export interface ItemData {
   environments?: { id: string; name: string; variables: Pair[] }[];

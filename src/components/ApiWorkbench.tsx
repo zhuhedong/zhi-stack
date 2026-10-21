@@ -22,6 +22,9 @@ import { DraftNotice } from './DraftNotice';
 import { ApiEnvironments } from './ApiEnvironments';
 import { RequestHistory } from './RequestHistory';
 import { useProbe } from '../lib/useProbe';
+import { applyVariables, evaluateInWorker, type ChainOutcome } from '../lib/chaining';
+import { ChainRules, ChainSummary } from './ChainRules';
+import { ListOrdered } from 'lucide-react';
 
 export function ApiWorkbench({
   item,
@@ -46,6 +49,9 @@ export function ApiWorkbench({
   const probe = useProbe(item.id);
   const { sending, response } = probe;
   const [responseTab, setResponseTab] = useState('body');
+  const [outcome, setOutcome] = useState<ChainOutcome | null>(null);
+  const [sequence, setSequence] = useState<{ label: string; ok: boolean; note: string }[] | null>(null);
+  const [sequenceRunning, setSequenceRunning] = useState(false);
   const persistence = usePersistentDraft({
     scope: `api:${item.id}`,
     kind: 'credential',
@@ -63,6 +69,7 @@ export function ApiWorkbench({
   const ep = endpoints[index];
   const invalidateProbe = () => {
     probe.reset();
+    setOutcome(null);
   };
   const update = (patch: Partial<ItemData>) => {
     setData((v) => ({ ...v, ...patch }));
@@ -97,18 +104,113 @@ export function ApiWorkbench({
       setSaving(false);
     }
   }
+  /** Sends one endpoint, then runs its extraction/assertion rules and stores extracted variables. */
+  async function execute(current: ItemData, target: Endpoint) {
+    if (target.requestWarning && !target.requestBody && !['GET', 'HEAD'].includes(target.method))
+      throw new Error(target.requestWarning);
+    const result = await probe.run(
+      buildRequest(current, target),
+      current.environments?.find((env) => env.id === current.activeEnvironment)?.name || '默认',
+    );
+    if (!result) return { data: current, outcome: null };
+    const rules =
+      (target.extractions || []).some((r) => r.enabled) || (target.assertions || []).some((r) => r.enabled);
+    if (!rules) return { data: current, outcome: null, status: result.status };
+    const evaluated = await evaluateInWorker(
+      {
+        status: result.status,
+        headers: result.headers,
+        body: result.bodyBase64 != null ? '' : result.body,
+        durationMs: result.durationMs,
+      },
+      target.extractions || [],
+      target.assertions || [],
+    );
+    let next = current;
+    if (evaluated.variables.length) {
+      const environments = [...(current.environments || [])];
+      let active = environments.findIndex((env) => env.id === current.activeEnvironment);
+      if (active < 0) {
+        environments.push({ id: crypto.randomUUID(), name: '运行时变量', variables: [] });
+        active = environments.length - 1;
+      }
+      environments[active] = {
+        ...environments[active],
+        variables: applyVariables(environments[active].variables, evaluated.variables, (key, value) => ({
+          key,
+          value,
+          enabled: true,
+          desc: '由响应提取',
+        })),
+      };
+      next = { ...current, environments, activeEnvironment: environments[active].id };
+      setData(next);
+      draft.change();
+    }
+    return { data: next, outcome: evaluated, status: result.status };
+  }
   async function send() {
     if (!ep) return;
     setError('');
+    setOutcome(null);
+    setSequence(null);
     try {
-      if (ep.requestWarning && !ep.requestBody && !['GET', 'HEAD'].includes(ep.method))
-        throw new Error(ep.requestWarning);
-      await probe.run(
-        buildRequest(data, ep),
-        data.environments?.find((env) => env.id === data.activeEnvironment)?.name || '默认',
-      );
+      setOutcome((await execute(data, ep)).outcome);
     } catch (e) {
       setError(errorMessage(e));
+    }
+  }
+  /** Runs every endpoint in list order, chaining extracted variables; stops at the first failure. */
+  async function runSequence() {
+    setError('');
+    setOutcome(null);
+    setSequenceRunning(true);
+    const log: { label: string; ok: boolean; note: string }[] = [];
+    setSequence(log);
+    let current = data;
+    try {
+      for (const [i, target] of endpoints.entries()) {
+        setIndex(i);
+        const label = `${target.method} ${target.path}`;
+        try {
+          const step = await execute(current, target);
+          current = step.data;
+          const failed = step.outcome
+            ? step.outcome.assertions.filter((a) => !a.passed).length + step.outcome.errors.length
+            : 0;
+          const ok = step.status !== undefined && failed === 0;
+          log.push({
+            label,
+            ok,
+            note:
+              step.status === undefined
+                ? '请求未完成'
+                : `HTTP ${step.status}` +
+                  (step.outcome
+                    ? ` · 断言 ${step.outcome.assertions.filter((a) => a.passed).length}/${step.outcome.assertions.length}`
+                    : '') +
+                  (step.outcome?.variables.length
+                    ? ` · 提取 ${step.outcome.variables.map((v) => v.name).join(', ')}`
+                    : '') +
+                  (failed
+                    ? ' · ' +
+                      [
+                        ...step.outcome!.errors,
+                        ...step.outcome!.assertions.filter((a) => !a.passed).map((a) => '✗ ' + a.label),
+                      ].join('；')
+                    : ''),
+          });
+          setSequence([...log]);
+          setOutcome(step.outcome);
+          if (!ok) break;
+        } catch (e) {
+          log.push({ label, ok: false, note: errorMessage(e) });
+          setSequence([...log]);
+          break;
+        }
+      }
+    } finally {
+      setSequenceRunning(false);
     }
   }
   async function copy() {
@@ -279,6 +381,16 @@ export function ApiWorkbench({
                   {sending ? '请求中…' : '发送请求'}
                 </button>
                 {sending && <button onClick={probe.cancel}>取消请求</button>}
+                {endpoints.length > 1 && (
+                  <button
+                    disabled={sending || sequenceRunning}
+                    title="按列表顺序依次发送全部接口，并在请求之间传递提取的变量；任一请求失败或断言不通过即停止"
+                    onClick={() => void runSequence()}
+                  >
+                    <ListOrdered size={14} />
+                    按顺序运行全部
+                  </button>
+                )}
               </div>
               <label className="base-url">
                 当前接口服务地址（留空使用基础地址）
@@ -306,6 +418,9 @@ export function ApiWorkbench({
                 </button>
                 <button className={epTab === 'body' ? 'active' : ''} onClick={() => setEpTab('body')}>
                   Body
+                </button>
+                <button className={epTab === 'chain' ? 'active' : ''} onClick={() => setEpTab('chain')}>
+                  提取 / 断言 <span>{(ep.extractions?.length || 0) + (ep.assertions?.length || 0)}</span>
                 </button>
               </div>
               {epTab === 'params' && (
@@ -366,6 +481,25 @@ export function ApiWorkbench({
                   />
                 </div>
               )}
+              {epTab === 'chain' && (
+                <ChainRules
+                  extractions={ep.extractions || []}
+                  assertions={ep.assertions || []}
+                  onExtractions={(extractions) => changeEndpoint({ extractions })}
+                  onAssertions={(assertions) => changeEndpoint({ assertions })}
+                  outcome={outcome}
+                />
+              )}
+              {sequence && (
+                <div className="chain-sequence" role="status">
+                  <h3>按顺序运行{sequenceRunning ? '中…' : '结果'}</h3>
+                  {sequence.map((step, i) => (
+                    <div key={i} className={step.ok ? 'good' : 'danger-text'}>
+                      {step.ok ? '✓' : '✗'} {i + 1}. {step.label} — {step.note}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="section-title curl-title">
                 <h3>
                   实时 cURL <span className="muted">Bash / WSL</span>
@@ -408,6 +542,7 @@ export function ApiWorkbench({
                 </div>
                 {response ? (
                   <>
+                    {outcome && <ChainSummary outcome={outcome} />}
                     <div className="tabs">
                       <button
                         className={responseTab === 'body' ? 'active' : ''}
@@ -431,11 +566,18 @@ export function ApiWorkbench({
                         <Code
                           className="response-body"
                           code={responseBody}
-                          language={guessLanguage(responseBody, headerValue(response.headers, 'content-type'))}
+                          language={guessLanguage(
+                            responseBody,
+                            headerValue(response.headers, 'content-type'),
+                          )}
                         />
                       )
                     ) : (
-                      <Code className="response-body" code={JSON.stringify(response.headers, null, 2)} language="json" />
+                      <Code
+                        className="response-body"
+                        code={JSON.stringify(response.headers, null, 2)}
+                        language="json"
+                      />
                     )}
                   </>
                 ) : (

@@ -30,8 +30,9 @@ export function useProbe(itemId: string) {
     },
     [itemId],
   );
-  async function run(request: CompiledRequest, environment = '默认') {
-    if (active.current) return;
+  async function run(request: CompiledRequest, environment = '默认'): Promise<ProbeResult | null> {
+    if (active.current) return null;
+    let delivered: ProbeResult | null = null;
     const token = ++generation.current;
     const current = { id: crypto.randomUUID(), abort: new AbortController() };
     active.current = current;
@@ -44,7 +45,10 @@ export function useProbe(itemId: string) {
         signal: current.abort.signal,
         body: JSON.stringify({ ...request, itemId, requestId: current.id, environment }),
       });
-      if (generation.current === token) setResponse(result);
+      if (generation.current === token) {
+        setResponse(result);
+        delivered = result;
+      }
     } catch (e) {
       if (generation.current === token) setError(errorMessage(e));
     } finally {
@@ -54,6 +58,7 @@ export function useProbe(itemId: string) {
         setFinished((v) => v + 1);
       }
     }
+    return delivered;
   }
   function cancel() {
     const operation = stop();
