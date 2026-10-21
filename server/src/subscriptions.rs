@@ -182,6 +182,10 @@ async fn next(state: &AppState) -> Result<bool> {
     };
     sqlx::query("UPDATE repo_subscriptions SET checking=true,next_check_at=now()+make_interval(hours=>interval_hours) WHERE item_id=$1").bind(id).execute(&mut *tx).await?;
     tx.commit().await?;
+    let previous = value["latestRelease"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
     let (status, message) = match ingest::collect(state, &url, "repo").await {
         Ok(collected) => {
             let latest = snapshot(&collected.input.data);
@@ -209,12 +213,35 @@ async fn next(state: &AppState) -> Result<bool> {
         .bind(Uuid::new_v4())
         .bind(id)
         .bind(status)
-        .bind(value)
+        .bind(&value)
         .bind(message)
         .execute(&mut *tx)
         .await?;
         sqlx::query("DELETE FROM repo_checks WHERE item_id=$1 AND id NOT IN (SELECT id FROM repo_checks WHERE item_id=$1 ORDER BY created_at DESC LIMIT 100)").bind(id).execute(&mut *tx).await?;
     }
     tx.commit().await?;
+    let latest = value["latestRelease"].as_str().unwrap_or_default();
+    // Only an actual change from a known release notifies (not the first observation).
+    if status != "failed" && !previous.is_empty() && !latest.is_empty() && latest != previous {
+        let title: Option<String> = sqlx::query_scalar("SELECT title FROM items WHERE id=$1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?;
+        let event = crate::notifications::Event {
+            repo: title.unwrap_or_else(|| url.clone()),
+            release: latest.to_string(),
+            url: value["releaseUrl"].as_str().unwrap_or(&url).to_string(),
+            notes: value["releaseNotes"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            published_at: value["releaseDate"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+        };
+        let state = state.clone();
+        tokio::spawn(async move { crate::notifications::broadcast(&state, event).await });
+    }
     Ok(true)
 }

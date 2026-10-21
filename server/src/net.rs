@@ -51,7 +51,7 @@ fn public_v4(ip: Ipv4Addr) -> bool {
         || (a == 198 && (b == 18 || b == 19))
         || (a == 192 && b == 0))
 }
-fn is_public(ip: IpAddr) -> bool {
+pub(crate) fn is_public(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v) => public_v4(v),
         IpAddr::V6(v) => {

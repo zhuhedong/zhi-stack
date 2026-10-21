@@ -1,3 +1,4 @@
+import { NotificationSettings } from './NotificationSettings';
 import { ScheduledBackups } from './ScheduledBackups';
 import { PasswordHealth } from './PasswordHealth';
 import { ImportCenter } from './ImportCenter';
@@ -218,6 +219,7 @@ export function DataManager({
           health: '密码健康',
           security: '主密码',
           bookmarklet: '一键收藏',
+          notifications: '通知',
         }).map(([key, label]) => (
           <button
             key={key}
@@ -404,6 +406,7 @@ export function DataManager({
         {tab === 'imports' && <ImportCenter onChanged={onChanged} />}
         {tab === 'health' && <PasswordHealth />}
         {tab === 'bookmarklet' && <BookmarkletSettings />}
+        {tab === 'notifications' && <NotificationSettings />}
         {tab === 'security' && (
           <Form
             className="maintenance-form"

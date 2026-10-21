@@ -334,3 +334,65 @@ test('api export: Postman v2.1 collection with tests from assertions', async () 
   // Generated test code must be valid JavaScript.
   for (const line of login.event![0].script.exec) expect(() => new Function('pm', line)).not.toThrow();
 });
+
+test('notification settings: create channel payload and edit keeps blank secrets out', async () => {
+  const { NotificationSettings } = await import('../src/components/NotificationSettings');
+  const { ConfirmationProvider } = await import('../src/components/ConfirmationProvider');
+  const channels = [
+    {
+      id: 'n1',
+      name: '团队群',
+      kind: 'dingtalk',
+      enabled: true,
+      config: {},
+      secret: {
+        urlHost: 'oapi.dingtalk.com',
+        hasUrl: true,
+        hasSigning: true,
+        hasBotToken: false,
+        hasPassword: false,
+      },
+      lastStatus: 'success',
+      lastError: '',
+    },
+  ];
+  handler = (path, init) =>
+    init?.method ? { id: 'n2' } : path === '/notifications/channels' ? { channels } : {};
+  const host = document.createElement('div');
+  document.body.append(host);
+  await act(async () =>
+    createRoot(host).render(
+      <ConfirmationProvider>
+        <NotificationSettings />
+      </ConfirmationProvider>,
+    ),
+  );
+  await flush();
+  expect(host.textContent).toContain('oapi.dingtalk.com');
+  expect(host.textContent).toContain('已配置签名');
+  const button = (text: string) =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.includes(text))!;
+  await act(async () => button('添加通知渠道').click());
+  const inputs = () => [...host.querySelectorAll<HTMLInputElement>('.feed-form input')];
+  await act(async () => {
+    input(inputs()[0], '企微群');
+    input(inputs()[2], 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=k');
+  });
+  await act(async () => button('保存').click());
+  await flush();
+  const post = calls.find((c) => c.init?.method === 'POST')!;
+  expect(JSON.parse(String(post.init!.body))).toEqual({
+    name: '企微群',
+    kind: 'wecom',
+    enabled: true,
+    config: {},
+    secret: { url: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=k' },
+  });
+  await act(async () => button('编辑').click());
+  expect(host.textContent).toContain('留空保持不变');
+  await act(async () => button('保存').click());
+  await flush();
+  const put = calls.find((c) => c.init?.method === 'PUT')!;
+  expect(put.path).toBe('/notifications/channels/n1');
+  expect(JSON.parse(String(put.init!.body)).secret).toEqual({});
+});

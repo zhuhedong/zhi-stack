@@ -286,6 +286,7 @@ pub(crate) async fn audit_schema(state: &AppState) -> Result<()> {
                 "backup_runs",
                 "item_search",
                 "backup_schedule",
+                "notification_channels",
                 "scheduled_backups",
             ]
             .contains(&t.as_str())
