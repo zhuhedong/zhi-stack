@@ -4,6 +4,7 @@ import type { Item } from '../../types';
 import { copyText, errorMessage } from '../../lib/api';
 import { connectionCommand } from '../../lib/request';
 import { Attachments } from '../Attachments';
+import { TotpField } from '../TotpField';
 import { Markdown } from '../LazyMarkdown';
 
 const ApiWorkbench = lazy(() => import('../ApiWorkbench').then((m) => ({ default: m.ApiWorkbench })));
@@ -63,36 +64,43 @@ export function CredentialView({
             <span className="good">AES-256-GCM 加密保护</span>
           </div>
           <div className="credential-fields">
-            {Object.entries(item.data.fields || {}).map(([key, value]) => (
-              <label key={key}>
-                {fieldNames[key] || key}
-                <div className="input-action">
-                  <input
-                    className="mono"
-                    type={secretField(key) && !visible[key] ? 'password' : 'text'}
-                    value={value}
-                    readOnly
-                  />
-                  {secretField(key) && (
+            {Object.entries(item.data.fields || {}).map(([key, value]) =>
+              key === 'totp' && value ? (
+                <div className="credential-totp" key={key}>
+                  <span>{fieldNames.totp}</span>
+                  <TotpField value={value} onCopy={(code) => void copy(code, '验证码')} />
+                </div>
+              ) : (
+                <label key={key}>
+                  {fieldNames[key] || key}
+                  <div className="input-action">
+                    <input
+                      className="mono"
+                      type={secretField(key) && !visible[key] ? 'password' : 'text'}
+                      value={value}
+                      readOnly
+                    />
+                    {secretField(key) && (
+                      <button
+                        className="icon-button"
+                        aria-label={(visible[key] ? '隐藏' : '显示') + (fieldNames[key] || key)}
+                        onClick={() => setVisible((v) => ({ ...v, [key]: !v[key] }))}
+                      >
+                        {visible[key] ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                    )}
                     <button
                       className="icon-button"
-                      aria-label={(visible[key] ? '隐藏' : '显示') + (fieldNames[key] || key)}
-                      onClick={() => setVisible((v) => ({ ...v, [key]: !v[key] }))}
+                      disabled={!value}
+                      aria-label={'复制' + (fieldNames[key] || key)}
+                      onClick={() => void copy(value, fieldNames[key] || key)}
                     >
-                      {visible[key] ? <EyeOff size={13} /> : <Eye size={13} />}
+                      <Copy size={13} />
                     </button>
-                  )}
-                  <button
-                    className="icon-button"
-                    disabled={!value}
-                    aria-label={'复制' + (fieldNames[key] || key)}
-                    onClick={() => void copy(value, fieldNames[key] || key)}
-                  >
-                    <Copy size={13} />
-                  </button>
-                </div>
-              </label>
-            ))}
+                  </div>
+                </label>
+              ),
+            )}
           </div>
           <div className="connection-tools">
             <button

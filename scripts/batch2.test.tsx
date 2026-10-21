@@ -313,3 +313,60 @@ test('dedupe marks existing items and repeats within the file', () => {
   ]);
   expect(() => parseImport('x.txt', 'hello')).toThrow(/无法识别/);
 });
+
+import { base32Decode, parseOtp, secondsLeft, totpCode } from '../src/lib/totp';
+
+test('TOTP matches the RFC 6238 vectors and parses otpauth links', async () => {
+  // RFC 6238 secret "12345678901234567890" (SHA-1), 8 digits.
+  const secret = new TextEncoder().encode('12345678901234567890');
+  const params = { secret, algorithm: 'SHA-1' as const, digits: 8, period: 30, issuer: '', account: '' };
+  expect(await totpCode(params, 59_000)).toBe('94287082');
+  expect(await totpCode(params, 1_111_111_109_000)).toBe('07081804');
+  expect(await totpCode(params, 20_000_000_000_000)).toBe('65353130');
+  const sha256 = {
+    ...params,
+    algorithm: 'SHA-256' as const,
+    secret: new TextEncoder().encode('12345678901234567890123456789012'),
+  };
+  expect(await totpCode(sha256, 59_000)).toBe('46119246');
+  expect(Array.from(base32Decode('GEZDGNBVGY3TQOJQ'))).toEqual(
+    Array.from(new TextEncoder().encode('1234567890')),
+  );
+  const parsed = parseOtp(
+    'otpauth://totp/GitHub:me%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub&digits=6&period=30',
+  );
+  expect(parsed).toMatchObject({
+    issuer: 'GitHub',
+    account: 'me@example.com',
+    digits: 6,
+    period: 30,
+    algorithm: 'SHA-1',
+  });
+  expect(Array.from(parseOtp('jbsw y3dp ehpk 3pxp').secret)).toEqual(Array.from(parsed.secret));
+  expect(() => parseOtp('otpauth://hotp/x?secret=JBSWY3DPEHPK3PXP')).toThrow(/TOTP/);
+  expect(() => parseOtp('not base32!')).toThrow(/Base32/);
+  expect(secondsLeft(30, 29_000)).toBe(1);
+});
+
+test('credential view shows a live TOTP code that can be copied', async () => {
+  const { TotpField } = await import('../src/components/TotpField');
+  const copied: string[] = [];
+  const host = html('');
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(
+      <TotpField
+        value="otpauth://totp/Demo:me?secret=JBSWY3DPEHPK3PXP&issuer=Demo"
+        onCopy={(c) => copied.push(c)}
+      />,
+    );
+  });
+  await act(async () => new Promise((r) => setTimeout(r, 20)));
+  expect(host.querySelector('.totp-code .mono')!.textContent).toMatch(/^\d{3} \d{3}$/);
+  expect(host.textContent).toContain('Demo · me');
+  expect(host.textContent).not.toContain('JBSWY3DPEHPK3PXP');
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="复制验证码"]')!.click());
+  expect(copied[0]).toMatch(/^\d{6}$/);
+  act(() => root.unmount());
+  host.remove();
+});
