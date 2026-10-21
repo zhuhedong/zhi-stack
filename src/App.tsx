@@ -1,3 +1,4 @@
+import { pendingSaveUrl } from './lib/bookmarklet';
 import { Form } from './components/Form';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Check, CircleAlert, LoaderCircle, LockKeyhole, X } from 'lucide-react';
@@ -506,6 +507,18 @@ function App() {
     if (pillar === 'credential' && !unlocked) showModal('unlock');
     else showModal('add');
   };
+  // Link handed over by the bookmarklet (?save=…); consumed once the session is ready.
+  const savedFromBookmarklet = useRef(pendingSaveUrl(window.location.search));
+  useEffect(() => {
+    if (!authenticated || !savedFromBookmarklet.current) return;
+    const url = savedFromBookmarklet.current;
+    savedFromBookmarklet.current = '';
+    const clean = new URL(window.location.href);
+    clean.searchParams.delete('save');
+    window.history.replaceState(null, '', clean.toString());
+    setIngestUrl(url);
+    showModal('ingest');
+  }, [authenticated]); // eslint-disable-line react-hooks/exhaustive-deps
   const ingest = async () => {
     if (!(await mayLeave())) return;
     setIngestUrl('');
@@ -1097,6 +1110,8 @@ function App() {
             showModal('tasks');
             reload();
             notify('已加入收录队列，可以关闭窗口，稍后在“任务与更新”查看结果。');
+            if (window.name === 'infohub-save' && window.opener !== null)
+              setTimeout(() => window.close(), 1800);
           }}
           onDraft={modalDraft}
         />

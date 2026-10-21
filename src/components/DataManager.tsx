@@ -1,3 +1,4 @@
+import { BookmarkletSettings } from './BookmarkletSettings';
 import { formatDateTime } from '../lib/format';
 import { Form } from './Form';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -207,7 +208,12 @@ export function DataManager({
       wide
     >
       <div className="tabs maintenance-tabs" role="tablist" aria-label="数据管理">
-        {Object.entries({ backup: '备份与恢复', trash: '回收站', security: '主密码' }).map(([key, label]) => (
+        {Object.entries({
+          backup: '备份与恢复',
+          trash: '回收站',
+          security: '主密码',
+          bookmarklet: '一键收藏',
+        }).map(([key, label]) => (
           <button
             key={key}
             role="tab"
@@ -389,6 +395,7 @@ export function DataManager({
             )}
           </>
         )}
+        {tab === 'bookmarklet' && <BookmarkletSettings />}
         {tab === 'security' && (
           <Form
             className="maintenance-form"
