@@ -226,7 +226,7 @@ pub async fn list(
             });
         }
     } else {
-        let mut select = QueryBuilder::new("SELECT i.*,COALESCE(s.annotation,'') AS annotation");
+        let mut select = QueryBuilder::new("SELECT i.*,COALESCE(s.annotation,'')||COALESCE((SELECT ' '||string_agg(h.quote||' '||h.note,' ') FROM highlights h WHERE h.item_id=i.id),'') AS annotation");
         filters(&mut select, &filter);
         if let Some(pattern) = like_pattern(&q) {
             // Credentials keep their searchable fields encrypted, so they are
@@ -235,6 +235,8 @@ pub async fn list(
                 .push(" AND (i.kind='credential' OR i.id IN (SELECT item_id FROM item_search WHERE text LIKE ")
                 .push_bind(pattern.clone())
                 .push(" UNION ALL SELECT item_id FROM item_state WHERE lower(annotation) LIKE ")
+                .push_bind(pattern.clone())
+                .push(" UNION ALL SELECT item_id FROM highlights WHERE lower(quote||' '||note) LIKE ")
                 .push_bind(pattern)
                 .push("))");
         }

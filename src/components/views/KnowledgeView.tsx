@@ -1,3 +1,4 @@
+import { ArticleHighlights } from '../ArticleHighlights';
 import { readingLabel } from '../../lib/readingTime';
 import { stripLeadingTitle } from '../../lib/markdownText';
 import { useRef, useState } from 'react';
@@ -154,10 +155,12 @@ export function KnowledgeView({
         </div>
       )}
       {mode === 'flow' ? (
-        <Markdown
-          baseUrl={item.url || undefined}
-          text={stripLeadingTitle(text, item.title) || '暂无正文。切换到 Markdown 添加内容。'}
-        />
+        <ArticleHighlights key={item.id} itemId={item.id}>
+          <Markdown
+            baseUrl={item.url || undefined}
+            text={stripLeadingTitle(text, item.title) || '暂无正文。切换到 Markdown 添加内容。'}
+          />
+        </ArticleHighlights>
       ) : (
         <section className="markdown-editor">
           <div className="section-title">

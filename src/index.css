@@ -2788,3 +2788,100 @@ input[type='checkbox'] {
   overflow-wrap: anywhere;
   font-size: 11px;
 }
+/* Highlights (CSS Custom Highlight API; no DOM changes to the rendered article) */
+::highlight(ih-yellow) {
+  background-color: rgba(250, 204, 21, 0.45);
+}
+::highlight(ih-green) {
+  background-color: rgba(74, 222, 128, 0.4);
+}
+::highlight(ih-blue) {
+  background-color: rgba(96, 165, 250, 0.4);
+}
+::highlight(ih-pink) {
+  background-color: rgba(244, 114, 182, 0.4);
+}
+::highlight(ih-purple) {
+  background-color: rgba(167, 139, 250, 0.45);
+}
+.hl-yellow {
+  --hl: rgba(250, 204, 21, 0.85);
+}
+.hl-green {
+  --hl: rgba(74, 222, 128, 0.85);
+}
+.hl-blue {
+  --hl: rgba(96, 165, 250, 0.85);
+}
+.hl-pink {
+  --hl: rgba(244, 114, 182, 0.85);
+}
+.hl-purple {
+  --hl: rgba(167, 139, 250, 0.85);
+}
+.highlight-toolbar {
+  position: fixed;
+  z-index: 50;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--color-dialog);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+.swatch {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--hl);
+  border: 2px solid transparent;
+}
+.swatch.active {
+  border-color: var(--color-text);
+}
+.highlight-editor {
+  position: fixed;
+  z-index: 50;
+  right: 24px;
+  bottom: 24px;
+  width: min(380px, calc(100vw - 48px));
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--color-dialog);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+}
+.hl-quote {
+  margin: 0;
+  padding: 4px 10px;
+  border-left: 4px solid var(--hl);
+  white-space: pre-wrap;
+  max-height: 9em;
+  overflow: auto;
+}
+.highlight-list {
+  margin-top: 28px;
+  display: grid;
+  gap: 10px;
+}
+.highlight-record {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+}
+.highlight-record.lost .hl-quote {
+  opacity: 0.6;
+}
+.highlight-note {
+  margin: 0;
+  white-space: pre-wrap;
+}

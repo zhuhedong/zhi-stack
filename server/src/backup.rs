@@ -49,6 +49,7 @@ const TABLES: &[&str] = &[
     "repo_checks",
     "feeds",
     "feed_entries",
+    "highlights",
     "workbench_preferences",
     "usage_events",
     "feedback",

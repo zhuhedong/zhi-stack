@@ -7,6 +7,7 @@ pub mod download;
 pub mod error;
 pub mod feeds;
 pub mod files;
+pub mod highlights;
 pub mod ingest;
 pub mod insights;
 pub mod jobs;
@@ -222,6 +223,15 @@ pub fn router(state: AppState) -> Router {
         .route("/jobs/{id}", axum::routing::delete(jobs::delete))
         .route("/subscriptions", get(subscriptions::all))
         .route("/feeds", get(feeds::list).post(feeds::add))
+        .route("/highlights", get(highlights::recent))
+        .route(
+            "/items/{id}/highlights",
+            get(highlights::list).post(highlights::create),
+        )
+        .route(
+            "/highlights/{id}",
+            axum::routing::put(highlights::update).delete(highlights::delete),
+        )
         .route(
             "/feeds/opml",
             get(feeds::export_opml).post(feeds::import_opml),
