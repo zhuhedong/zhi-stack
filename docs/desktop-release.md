@@ -61,3 +61,11 @@
 Windows 代码签名未接入：需要购买代码签名证书（或使用 Azure Trusted Signing），再在 `tauri.conf.json` 的 `bundle.windows` 中配置，届时再扩展工作流。
 
 需要 Apple 开发者账号（年费）才能签名和公证 macOS 安装包。
+
+## 在线更新（Tauri updater）
+
+- 客户端启动 3 秒后静默检查 `https://github.com/zhuhedong/zhi-stack/releases/latest/download/latest.json`，也可在「数据与安全 → 客户端更新」手动检查。发现新版本时显示版本号与更新说明，下载（带进度）、安装后自动重启。
+- `bundle.createUpdaterArtifacts` 生成 `.sig` 签名；`tauri-action` 的 `includeUpdaterJson` 把各平台合并进 release 的 `latest.json`。
+- 仓库 secrets `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 必须是与 `tauri.conf.json` 中 `plugins.updater.pubkey` 配对的私钥。缺失时 CI 会跳过更新包（客户端看不到这次更新）。私钥丢失后只能换新公钥，旧客户端需手动重装一次。
+- 只有内置了更新器的版本（v0.3.0 之后的下一版起）才能自动更新；v0.3.0 及更早版本需手动安装一次。
+- macOS 未签名/未公证时，更新替换 .app 后首次打开可能仍需在系统设置中允许。

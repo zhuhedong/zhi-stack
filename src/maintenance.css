@@ -539,3 +539,10 @@ input[type='file']::file-selector-button:hover {
     flex-shrink: 0;
   }
 }
+
+.update-notes {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 0.85em;
+}

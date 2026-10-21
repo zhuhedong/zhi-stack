@@ -39,6 +39,18 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMyNzBCNkZEREY4ODJGRTcKUldUbkw0amYvYlp3d3JTRmRENEJ6b2lNZ2VOaEx6bDVYTnZ6eW1kOHBBUHZFN3NhUFJNaVlHMUYK",
+      "endpoints": [
+        "https://github.com/zhuhedong/zhi-stack/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

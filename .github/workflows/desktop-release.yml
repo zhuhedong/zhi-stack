@@ -254,6 +254,10 @@ jobs:
           if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             put TAURI_SIGNING_PRIVATE_KEY; put TAURI_SIGNING_PRIVATE_KEY_PASSWORD
             echo "Tauri updater signing key: present"
+          else
+            # createUpdaterArtifacts needs the key; without it, build without updater artifacts.
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY not set; building without updater artifacts"
+            echo 'TAURI_CONFIG={"bundle":{"createUpdaterArtifacts":false}}' >> "$GITHUB_ENV"
           fi
 
       - name: Build and upload to the draft release
@@ -264,6 +268,11 @@ jobs:
         with:
           releaseId: ${{ needs.prepare.outputs.id }}
           args: ${{ matrix.args }}
+          # Updater: bundle.createUpdaterArtifacts=true makes signed .sig files
+          # (needs TAURI_SIGNING_PRIVATE_KEY); every matrix job merges its
+          # platform into latest.json, served at releases/latest/download/latest.json.
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
 
       - name: Build
         if: needs.version.outputs.release != 'true'
@@ -315,6 +324,15 @@ jobs:
           copy '*_amd64.deb'        InfoHub_linux_amd64.deb
           copy '*_amd64.AppImage'   InfoHub_linux_amd64.AppImage
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber InfoHub_*
+      - name: Check updater manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --output - |
+            jq -e '.version and (.platforms | length > 0)' ||
+            echo "::warning::latest.json missing or empty; in-app update will not see $TAG"
+          true
       - name: Flip draft to published (creates the tag)
         env:
           GH_TOKEN: ${{ github.token }}

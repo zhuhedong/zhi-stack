@@ -5,6 +5,7 @@ import './maintenance.css';
 import App from './App.tsx';
 import { ConfirmationProvider } from './components/ConfirmationProvider';
 import { WindowControls } from './components/WindowControls';
+import { UpdatePrompt } from './components/UpdatePrompt';
 import { isDesktop, isMac } from './lib/platform';
 import { applyReadingWidth } from './lib/readingWidth';
 import { applyTheme } from './lib/theme';
@@ -23,6 +24,7 @@ createRoot(document.getElementById('root')!).render(
     <ConfirmationProvider>
       <App />
       <WindowControls />
+      {isDesktop && <UpdatePrompt />}
     </ConfirmationProvider>
   </StrictMode>,
 );
