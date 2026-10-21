@@ -3,7 +3,8 @@ import { Select } from './ui/Select';
 import { Form } from './Form';
 import { TotpEditor } from './TotpEditor';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { LoaderCircle, Plus, Trash2 } from 'lucide-react';
+import { LoaderCircle, Plus, Trash2, Wand2 } from 'lucide-react';
+import { PasswordGenerator } from './PasswordGenerator';
 import { usePersistentDraft } from '../lib/usePersistentDraft';
 import { DraftNotice } from './DraftNotice';
 import { Modal } from './Modal';
@@ -101,6 +102,7 @@ export function ItemEditor({
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [customKey, setCustomKey] = useState('');
+  const [generatorFor, setGeneratorFor] = useState<string | null>(null);
   const persistence = usePersistentDraft({
     scope: `editor:${item?.id || 'new'}`,
     kind: form.kind,
@@ -346,6 +348,17 @@ export function ItemEditor({
                             onChange={(e) => data({ fields: { ...form.data.fields, [key]: e.target.value } })}
                           />
                         )}
+                        {/password/i.test(key) && (
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="生成密码"
+                            aria-label={`为 ${fieldNames[key] || key} 生成密码`}
+                            onClick={() => setGeneratorFor(generatorFor === key ? null : key)}
+                          >
+                            <Wand2 size={13} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="icon-button"
@@ -363,6 +376,15 @@ export function ItemEditor({
                     </label>
                   ))}
                 </div>
+                {generatorFor && Object.hasOwn(form.data.fields || {}, generatorFor) && (
+                  <PasswordGenerator
+                    onClose={() => setGeneratorFor(null)}
+                    onUse={(value) => {
+                      data({ fields: { ...form.data.fields, [generatorFor]: value } });
+                      setGeneratorFor(null);
+                    }}
+                  />
+                )}
                 <div className="add-field">
                   <input
                     aria-label="自定义属性名称"

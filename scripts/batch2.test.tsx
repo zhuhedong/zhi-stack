@@ -8,10 +8,12 @@ import { anchorFor, locate, rangeFor, textOf } from '../src/lib/anchoring';
 
 const calls: { path: string; init?: RequestInit }[] = [];
 let stored: unknown[] = [];
+let handler: ((path: string, init?: RequestInit) => unknown) | null = null;
 vi.mock('../src/lib/api', () => ({
   errorMessage: (e: unknown) => String(e),
   api: async (path: string, init?: RequestInit) => {
     calls.push({ path, init });
+    if (handler) return handler(path, init);
     if (!init?.method) return stored;
     if (init.method === 'POST')
       return {
@@ -28,6 +30,7 @@ vi.mock('../src/lib/api', () => ({
 beforeEach(() => {
   calls.length = 0;
   stored = [];
+  handler = null;
 });
 
 function html(markup: string) {
@@ -367,6 +370,152 @@ test('credential view shows a live TOTP code that can be copied', async () => {
   expect(host.textContent).not.toContain('JBSWY3DPEHPK3PXP');
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="复制验证码"]')!.click());
   expect(copied[0]).toMatch(/^\d{6}$/);
+  act(() => root.unmount());
+  host.remove();
+});
+
+import {
+  generatePassphrase,
+  generatePassword,
+  healthReport,
+  passwordStrength,
+  randomInt,
+} from '../src/lib/passwords';
+import { WORDS } from '../src/lib/wordlist';
+
+test('generator honours length and character classes', () => {
+  for (let i = 0; i < 50; i++) {
+    const value = generatePassword({
+      length: 16,
+      lower: true,
+      upper: true,
+      digits: true,
+      symbols: true,
+      avoidAmbiguous: true,
+    });
+    expect(value).toHaveLength(16);
+    expect(value).toMatch(/[a-z]/);
+    expect(value).toMatch(/[A-Z]/);
+    expect(value).toMatch(/\d/);
+    expect(value).toMatch(/[^A-Za-z0-9]/);
+    expect(value).not.toMatch(/[Il1O0o]/);
+  }
+  expect(
+    generatePassword({
+      length: 8,
+      lower: false,
+      upper: false,
+      digits: true,
+      symbols: false,
+      avoidAmbiguous: false,
+    }),
+  ).toMatch(/^\d{8}$/);
+  expect(() =>
+    generatePassword({
+      length: 8,
+      lower: false,
+      upper: false,
+      digits: false,
+      symbols: false,
+      avoidAmbiguous: false,
+    }),
+  ).toThrow();
+  const phrase = generatePassphrase({ words: 5, separator: '-', capitalize: false, number: false }).split(
+    '-',
+  );
+  expect(phrase).toHaveLength(5);
+  expect(phrase.every((w) => WORDS.includes(w))).toBe(true);
+  expect(new Set(WORDS).size).toBe(1296);
+  const counts = [0, 0, 0];
+  for (let i = 0; i < 3000; i++) counts[randomInt(3)]++;
+  expect(Math.min(...counts)).toBeGreaterThan(850);
+});
+
+test('strength estimate flags common, short and patterned passwords', () => {
+  expect(passwordStrength('password123').score).toBe(0);
+  expect(passwordStrength('aaaaaaaa').score).toBeLessThanOrEqual(1);
+  expect(passwordStrength('20240101').reasons).toContain('像日期或手机号');
+  expect(passwordStrength('Correct-Horse-Battery-Staple-9').score).toBeGreaterThanOrEqual(3);
+  expect(passwordStrength('x9#Lq2!vR7@mT4$w').score).toBe(4);
+});
+
+test('health report finds weak, reused and old passwords', () => {
+  const now = Date.parse('2026-10-21T00:00:00Z');
+  const report = healthReport(
+    [
+      {
+        itemId: '1',
+        title: 'A',
+        field: '密码',
+        value: 'Str0ng!Unique#Pass-2026',
+        updatedAt: '2026-09-01T00:00:00Z',
+      },
+      {
+        itemId: '2',
+        title: 'B',
+        field: '密码',
+        value: 'shared-Secret-Value-42!',
+        updatedAt: '2026-09-01T00:00:00Z',
+      },
+      {
+        itemId: '3',
+        title: 'C',
+        field: '密码',
+        value: 'shared-Secret-Value-42!',
+        updatedAt: '2024-01-01T00:00:00Z',
+      },
+      { itemId: '4', title: 'D', field: '密码', value: '123456', updatedAt: '2026-09-01T00:00:00Z' },
+    ],
+    now,
+  );
+  expect(report.map((f) => f.itemId)).toEqual(['2', '3', '4']);
+  expect(report[0].reusedWith).toEqual(['C · 密码']);
+  expect(report[1].ageDays).toBeGreaterThan(365);
+  expect(report[2].weak?.score).toBe(0);
+});
+
+test('password health only reads from the server and never sends secrets', async () => {
+  const { PasswordHealth } = await import('../src/components/PasswordHealth');
+  handler = (path) => {
+    if (path.startsWith('/items?'))
+      return { items: [{ id: 'c1' }, { id: 'c2' }], total: 2, dimensions: [], unlocked: true };
+    return {
+      id: path.slice(7),
+      title: path.endsWith('1') ? 'Mail' : 'Bank',
+      updatedAt: '2026-10-01T00:00:00Z',
+      data: { fields: { username: 'me', password: 'qwerty123', totp: 'JBSWY3DPEHPK3PXP' } },
+    };
+  };
+  const host = html('');
+  const root = createRoot(host);
+  await act(async () => root.render(<PasswordHealth />));
+  await act(async () => host.querySelector<HTMLButtonElement>('button.primary')!.click());
+  expect(host.textContent).toContain('已检查 2 个密码');
+  expect(host.textContent).toContain('弱密码 2');
+  expect(host.textContent).toContain('重复使用 2');
+  expect(host.textContent).not.toContain('qwerty123');
+  expect(calls.every((c) => !c.init?.method || c.init.method === 'GET')).toBe(true);
+  expect(calls.some((c) => String(c.init?.body ?? '').includes('qwerty123'))).toBe(false);
+  act(() => root.unmount());
+  host.remove();
+});
+
+test('password generator fills the chosen value', async () => {
+  const { PasswordGenerator } = await import('../src/components/PasswordGenerator');
+  const used: string[] = [];
+  const host = html('');
+  const root = createRoot(host);
+  await act(async () => root.render(<PasswordGenerator onUse={(v) => used.push(v)} onClose={() => {}} />));
+  const shown = host.querySelector('[aria-label="生成的密码"]')!.textContent!;
+  expect(shown).toHaveLength(20);
+  await act(async () =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent === '助记口令')!.click(),
+  );
+  expect(host.querySelector('[aria-label="生成的密码"]')!.textContent!.split('-')).toHaveLength(5);
+  await act(async () =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent === '使用此密码')!.click(),
+  );
+  expect(used[0].split('-')).toHaveLength(5);
   act(() => root.unmount());
   host.remove();
 });
