@@ -3059,3 +3059,7 @@ input[type='checkbox'] {
   align-items: center;
   margin-left: auto;
 }
+.notification-settings {
+  display: grid;
+  gap: 10px;
+}

@@ -15,6 +15,7 @@ pub mod library;
 pub mod lifecycle;
 pub mod model;
 pub mod net;
+pub mod notifications;
 pub mod projects;
 pub mod routes;
 pub mod scheduled;
@@ -238,6 +239,18 @@ pub fn router(state: AppState) -> Router {
             axum::routing::delete(scheduled::delete),
         )
         .route("/backup/scheduled/{id}/restore", post(scheduled::restore))
+        .route(
+            "/notifications/channels",
+            get(notifications::list).post(notifications::create),
+        )
+        .route(
+            "/notifications/channels/{id}",
+            axum::routing::put(notifications::update).delete(notifications::delete),
+        )
+        .route(
+            "/notifications/channels/{id}/test",
+            post(notifications::test),
+        )
         .route("/import/existing", post(library::import_existing))
         .route(
             "/items/{id}/highlights",
