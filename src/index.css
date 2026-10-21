@@ -3053,3 +3053,9 @@ input[type='checkbox'] {
   margin: 0 0 4px;
   font-size: 13px;
 }
+.export-collection {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+}
