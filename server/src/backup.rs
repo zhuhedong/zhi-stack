@@ -421,21 +421,7 @@ pub async fn restore(
         .fetch_one(&state.db)
         .await?;
     if initialized {
-        let token = headers
-            .get(header::AUTHORIZATION)
-            .and_then(|h| h.to_str().ok())
-            .and_then(|h| h.strip_prefix("Bearer "))
-            .ok_or_else(AppError::unauthorized)?;
-        let hash = digest(token.as_bytes());
-        let valid = state
-            .sessions
-            .lock()
-            .await
-            .get(&hash)
-            .is_some_and(|s| s.expires > std::time::Instant::now());
-        if !valid {
-            return Err(AppError::unauthorized());
-        }
+        auth::require_session(&state, &headers).await?;
     }
     let mut password = zeroize::Zeroizing::new(String::new());
     let mut current_password = zeroize::Zeroizing::new(String::new());

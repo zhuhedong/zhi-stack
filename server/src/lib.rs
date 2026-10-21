@@ -96,6 +96,8 @@ impl AppState {
 /// only allows API calls to the same origin.
 pub const WEB_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 const LANDING_TEMPLATE: &str = include_str!("landing.html");
+/// Same bytes as `src-tauri/icons/icon.ico` and `public/favicon.ico`.
+const FAVICON: &[u8] = include_bytes!("favicon.ico");
 
 pub(crate) fn html_escape(value: &str) -> String {
     value
@@ -331,6 +333,24 @@ pub fn router(state: AppState) -> Router {
                 .route("/index.html", get(serve))
                 .route("/download", get(dl))
                 .route(
+                    "/favicon.ico",
+                    get(|| async {
+                        (
+                            [
+                                (
+                                    header::CONTENT_TYPE,
+                                    HeaderValue::from_static("image/x-icon"),
+                                ),
+                                (
+                                    header::CACHE_CONTROL,
+                                    HeaderValue::from_static("public, max-age=86400"),
+                                ),
+                            ],
+                            FAVICON,
+                        )
+                    }),
+                )
+                .route(
                     "/download.js",
                     get(|| async {
                         (
@@ -495,7 +515,26 @@ mod web_ui_tests {
             assert!(b.contains("https://example.com/dl?a=1&amp;b=&quot;x&quot;"));
             assert!(!b.contains("<script") && !b.contains("SPA"));
         }
-        for path in ["/items/123", "/assets/app.js", "/favicon.ico"] {
+        let fav = app
+            .clone()
+            .oneshot(Request::get("/favicon.ico").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(fav.status(), StatusCode::OK);
+        assert_eq!(fav.headers()[header::CONTENT_TYPE], "image/x-icon");
+        let fav = fav.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&fav[..], FAVICON);
+        assert_eq!(&fav[..4], &[0, 0, 1, 0]);
+        for path in ["/", "/download"] {
+            assert!(
+                get(&app, path)
+                    .await
+                    .2
+                    .contains(r#"<link rel="icon" href="/favicon.ico""#),
+                "{path}"
+            );
+        }
+        for path in ["/items/123", "/assets/app.js"] {
             assert_eq!(get(&app, path).await.0, StatusCode::NOT_FOUND, "{path}");
         }
         assert_api_routed(&app).await;
