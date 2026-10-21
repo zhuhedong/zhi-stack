@@ -143,6 +143,53 @@ fn score(row: &ItemRow, annotation: &str, q: &str, auth: &Auth) -> Option<(i32, 
         data_snippet(&row.data, q).map(|s| (10, s))
     }
 }
+/// Characters indexed as CJK grams; must match `infohub_cjk_grams` in 0014_cjk_search.sql.
+fn is_cjk(c: char) -> bool {
+    matches!(c as u32, 0x3040..=0x30ff | 0x3400..=0x4dbf | 0x4e00..=0x9fff | 0xf900..=0xfaff | 0xac00..=0xd7af)
+}
+/// Grams a document must contain to match `term`: the character itself for a
+/// single-character CJK run, otherwise every adjacent pair.
+pub(crate) fn required_grams(term: &str) -> Vec<String> {
+    let mut grams = Vec::new();
+    let mut run: Vec<char> = Vec::new();
+    let flush = |run: &mut Vec<char>, grams: &mut Vec<String>| {
+        match run.len() {
+            0 => {}
+            1 => grams.push(run[0].to_string()),
+            _ => grams.extend(run.windows(2).map(|w| w.iter().collect::<String>())),
+        }
+        run.clear();
+    };
+    for c in term.chars() {
+        if is_cjk(c) {
+            run.push(c);
+        } else {
+            flush(&mut run, &mut grams);
+        }
+    }
+    flush(&mut run, &mut grams);
+    grams.sort();
+    grams.dedup();
+    grams.truncate(64);
+    grams
+}
+/// Splits a query into AND-ed terms; `"double quotes"` keep a phrase together.
+pub(crate) fn terms(q: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (i, part) in q.split('"').enumerate() {
+        if i % 2 == 1 {
+            let phrase = part.trim();
+            if !phrase.is_empty() {
+                out.push(phrase.to_string());
+            }
+        } else {
+            out.extend(part.split_whitespace().map(str::to_string));
+        }
+    }
+    out.dedup();
+    out.truncate(8);
+    out
+}
 /// Upper bound of rows scored per search request.
 const SEARCH_CANDIDATES: usize = 2000;
 /// SQL LIKE pattern for the PostgreSQL prefilter, or `None` when the query
@@ -226,17 +273,35 @@ pub async fn list(
             });
         }
     } else {
+        let mut terms = terms(&q);
+        if terms.is_empty() {
+            terms.push(q.clone());
+        }
         let mut select = QueryBuilder::new("SELECT i.*,COALESCE(s.annotation,'')||COALESCE((SELECT ' '||string_agg(h.quote||' '||h.note,' ') FROM highlights h WHERE h.item_id=i.id),'') AS annotation");
         filters(&mut select, &filter);
-        if let Some(pattern) = like_pattern(&q) {
+        for term in &terms {
+            let Some(pattern) = like_pattern(term) else {
+                continue;
+            };
+            let grams = required_grams(term);
             // Credentials keep their searchable fields encrypted, so they are
             // always candidates and matched after decryption in `score`.
             select
                 .push(" AND (i.kind='credential' OR i.id IN (SELECT item_id FROM item_search WHERE text LIKE ")
-                .push_bind(pattern.clone())
+                .push_bind(pattern.clone());
+            if !grams.is_empty() {
+                // Indexed CJK containment narrows 1–2 character terms that trigrams cannot.
+                select
+                    .push(" AND (grams @> ")
+                    .push_bind(grams)
+                    .push("::text[] OR grams @> '{*}'::text[])");
+            }
+            select
                 .push(" UNION ALL SELECT item_id FROM item_state WHERE lower(annotation) LIKE ")
                 .push_bind(pattern.clone())
-                .push(" UNION ALL SELECT item_id FROM highlights WHERE lower(quote||' '||note) LIKE ")
+                .push(
+                    " UNION ALL SELECT item_id FROM highlights WHERE lower(quote||' '||note) LIKE ",
+                )
                 .push_bind(pattern)
                 .push("))");
         }
@@ -251,9 +316,28 @@ pub async fn list(
             annotation,
         }) = rows.try_next().await?
         {
-            let Some((score, snippet)) = score(&item, &annotation, &q, &auth) else {
+            // Every term must match; scores add up, the best-scoring snippet is shown.
+            let mut total_score = 0;
+            let mut best: Option<(i32, String)> = None;
+            let mut all = true;
+            for term in &terms {
+                match score(&item, &annotation, term, &auth) {
+                    Some((s, text)) => {
+                        total_score += s;
+                        if best.as_ref().is_none_or(|b| s > b.0) {
+                            best = Some((s, text));
+                        }
+                    }
+                    None => {
+                        all = false;
+                        break;
+                    }
+                }
+            }
+            let (true, Some((_, snippet))) = (all, best) else {
                 continue;
             };
+            let score = total_score;
             matches += 1;
             item.data = list_data(&item.kind, &item.data);
             let hit = Hit {
@@ -538,4 +622,32 @@ pub async fn import_existing(
     Ok(Json(
         json!({"urls":urls,"vault":vault,"unlocked":auth.key.is_some()}),
     ))
+}
+#[cfg(test)]
+mod cjk_tests {
+    use super::*;
+    #[test]
+    fn grams_for_short_and_long_terms() {
+        assert_eq!(required_grams("调"), vec!["调"]);
+        assert_eq!(required_grams("调度"), vec!["调度"]);
+        let mut g = required_grams("调度器");
+        g.sort();
+        assert_eq!(g, vec!["度器", "调度"]);
+        assert_eq!(required_grams("tokio"), Vec::<String>::new());
+        let mut mixed = required_grams("rust异步io运行时");
+        mixed.sort();
+        assert_eq!(mixed, vec!["异步", "行时", "运行"]);
+        assert_eq!(required_grams("カタカナ").len(), 3);
+        assert_eq!(required_grams("한국어").len(), 2);
+    }
+    #[test]
+    fn query_terms() {
+        assert_eq!(terms("调度  原理"), vec!["调度", "原理"]);
+        assert_eq!(
+            terms("\"work stealing\" 调度"),
+            vec!["work stealing", "调度"]
+        );
+        assert_eq!(terms("a b c d e f g h i j").len(), 8);
+        assert!(terms("\"\"").is_empty());
+    }
 }

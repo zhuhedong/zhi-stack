@@ -12,7 +12,7 @@
     "server": "cargo run --manifest-path server/Cargo.toml",
     "db:dev": "node scripts/dev-db.mjs",
     "test:server": "cargo test --manifest-path server/Cargo.toml",
-    "test:all-integration": "node scripts/integration.mjs && node scripts/lifecycle-integration.mjs && node scripts/library-integration.mjs && node scripts/api-workspace-integration.mjs && node scripts/background-integration.mjs && node scripts/insights-integration.mjs && node scripts/feeds-integration.mjs && node scripts/highlights-integration.mjs && node scripts/imports-integration.mjs && node scripts/scheduled-backups-integration.mjs && node scripts/notifications-integration.mjs && node scripts/api-tokens-integration.mjs",
+    "test:all-integration": "node scripts/integration.mjs && node scripts/lifecycle-integration.mjs && node scripts/library-integration.mjs && node scripts/api-workspace-integration.mjs && node scripts/background-integration.mjs && node scripts/insights-integration.mjs && node scripts/feeds-integration.mjs && node scripts/highlights-integration.mjs && node scripts/imports-integration.mjs && node scripts/scheduled-backups-integration.mjs && node scripts/notifications-integration.mjs && node scripts/api-tokens-integration.mjs && node scripts/cjk-search-integration.mjs",
     "test:integration": "node scripts/integration.mjs",
     "test:lifecycle": "node scripts/lifecycle-integration.mjs",
     "test:library": "node scripts/library-integration.mjs",
@@ -31,7 +31,8 @@
     "version:bump": "node scripts/version-bump.mjs",
     "test:scheduled": "node scripts/scheduled-backups-integration.mjs",
     "test:notifications": "node scripts/notifications-integration.mjs",
-    "test:api-tokens": "node scripts/api-tokens-integration.mjs"
+    "test:api-tokens": "node scripts/api-tokens-integration.mjs",
+    "test:cjk-search": "node scripts/cjk-search-integration.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
