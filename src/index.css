@@ -3016,3 +3016,40 @@ input[type='checkbox'] {
   padding-top: 16px;
   border-top: 1px solid var(--color-border);
 }
+.chain-rules {
+  display: grid;
+  gap: 8px;
+}
+.chain-row {
+  display: grid;
+  grid-template-columns: auto 110px minmax(0, 1fr) auto minmax(0, 0.8fr) auto auto;
+  gap: 6px;
+  align-items: center;
+}
+.chain-row:has(> select + input + select) {
+  grid-template-columns: auto 110px minmax(0, 1fr) 100px minmax(0, 0.8fr) 36px auto;
+}
+.chain-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+.chain-var {
+  font-family: var(--font-mono, monospace);
+  color: var(--color-muted, inherit);
+}
+.chain-sequence {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+.chain-sequence h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
