@@ -2,7 +2,7 @@
 name = "infohub-server"
 version = "0.2.4"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.89"
 
 [dependencies]
 aes-gcm = "0.10"
