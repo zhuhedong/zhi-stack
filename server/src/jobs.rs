@@ -37,6 +37,7 @@ struct JobSummary {
     item_id: Option<Uuid>,
     attempts: i32,
     created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
 }
 #[derive(Deserialize)]
 pub struct Page {
@@ -139,7 +140,7 @@ pub async fn list(
     Extension(auth): Extension<Auth>,
     Query(page): Query<Page>,
 ) -> Result<Json<Value>> {
-    let rows:Vec<JobSummary>=sqlx::query_as("SELECT id,payload,encrypted,output,status,phase,item_id,attempts,created_at FROM ingest_jobs ORDER BY created_at DESC,id DESC LIMIT 200 OFFSET $1").bind(page.offset.unwrap_or(0).max(0)).fetch_all(&state.db).await?;
+    let rows:Vec<JobSummary>=sqlx::query_as("SELECT id,payload,encrypted,output,status,phase,item_id,attempts,created_at,updated_at FROM ingest_jobs ORDER BY created_at DESC,id DESC LIMIT 200 OFFSET $1").bind(page.offset.unwrap_or(0).max(0)).fetch_all(&state.db).await?;
     let mut result = vec![];
     for JobSummary {
         id,
@@ -151,6 +152,7 @@ pub async fn list(
         item_id,
         attempts,
         created_at: created,
+        updated_at: updated,
     } in rows
     {
         let readable = !encrypted || auth.key.is_some();
@@ -166,7 +168,7 @@ pub async fn list(
         } else {
             None
         };
-        result.push(json!({"id":id,"input":input,"output":output,"encrypted":encrypted,"status":status,"phase":phase,"itemId":item_id,"attempts":attempts,"createdAt":created}));
+        result.push(json!({"id":id,"input":input,"output":output,"encrypted":encrypted,"status":status,"phase":phase,"itemId":item_id,"attempts":attempts,"createdAt":created,"updatedAt":updated}));
     }
     Ok(Json(json!(result)))
 }

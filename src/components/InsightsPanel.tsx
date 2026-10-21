@@ -1,3 +1,4 @@
+import { formatDateTime } from '../lib/format';
 import { Select } from './ui/Select';
 import { Form } from './Form';
 import { useEffect, useState } from 'react';
@@ -287,7 +288,7 @@ export function InsightsPanel({
                       <strong>
                         {categories[entry.category]} · {entry.resolved ? '已解决' : '待处理'}
                       </strong>
-                      <small>{new Date(entry.createdAt).toLocaleString()}</small>
+                      <small>{formatDateTime(entry.createdAt)}</small>
                     </div>
                     <p className="feedback-message">{entry.message}</p>
                     <div className="inline-actions">

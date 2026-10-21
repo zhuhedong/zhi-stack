@@ -77,6 +77,13 @@ try {
   version = 2;
   article = (await a.request(`/items/${article.id}/refresh`, 'POST')).item;
   assert.ok(!article.data.content.includes('我的个人修改'));
+  {
+    const before = (await a.request(`/items/${article.id}/versions`)).length;
+    const again = await a.request(`/items/${article.id}/refresh`, 'POST');
+    assert.equal(again.unchanged, true);
+    assert.equal(again.item.revision, article.revision);
+    assert.equal((await a.request(`/items/${article.id}/versions`)).length, before);
+  }
   const history = await a.request(`/items/${article.id}/versions`);
   const savedVersion = history.find((v) => v.revision === savedRevision);
   assert.ok(savedVersion);
@@ -148,6 +155,8 @@ try {
     409,
   );
   assert.deepEqual((await a.request('/drafts/' + draftId)).payload, draftPayload);
+  assert.equal(await a.request('/drafts/missing-draft-probe?optional=true'), null);
+  await a.request('/drafts/missing-draft-probe', 'GET', undefined, 404);
   await a.request('/drafts/' + draftId + '?generation=0', 'DELETE', undefined, 409);
   const rawDraft = (await a.db.query('SELECT payload,encrypted FROM drafts WHERE id=$1', [draftId])).rows[0];
   assert.equal(rawDraft.encrypted, true);

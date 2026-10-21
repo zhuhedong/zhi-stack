@@ -17,9 +17,10 @@ import { AppFrame } from './components/AppFrame';
 import { ContextMenu, type MenuCommand } from './components/ContextMenu';
 import { openSource } from './lib/openSource';
 import { isDesktop } from './lib/platform';
-import { api, copyText, errorMessage, saveItem, setToken } from './lib/api';
+import { api, copyText, errorMessage, saveItem, setToken, takeRestored } from './lib/api';
 import { useConfirm } from './lib/confirmation';
-import type { Item, ListResult, Pillar } from './types';
+import { preferredPillar, type Item, type ListResult, type Pillar } from './types';
+import type { SidebarProject } from './components/Sidebar';
 const DataManager = lazy(() =>
   import('./components/DataManager').then((module) => ({ default: module.DataManager })),
 );
@@ -35,7 +36,11 @@ function App() {
   const confirm = useConfirm(authenticated);
   const [serverSettings, setServerSettings] = useState(false);
   const [unlocked, setUnlocked] = useState(true);
-  const [pillar, setPillar] = useState<Pillar>('credential');
+  const [pillar, setPillar] = useState<Pillar>('knowledge');
+  // Set on login: the first library load may move to a pillar that has content.
+  const autoPillarRef = useRef(false);
+  const [projects, setProjects] = useState<SidebarProject[]>([]);
+  const [projectFocus, setProjectFocus] = useState<string | undefined>(undefined);
   const [selected, setSelected] = useState<{ id: string; kind: Pillar } | null>(null);
   const [item, setItem] = useState<Item | null>(null);
   const [query, setQuery] = useState('');
@@ -107,6 +112,24 @@ function App() {
   }, [selected]);
   const notify = useCallback((message: string, error = false) => setToast({ text: message, error }), []);
   const reload = () => setTick((t) => t + 1);
+  // Suggest every known project, including empty ones and names only seen on items.
+  const projectNames = [
+    ...new Set([...projects.map((p) => p.name), ...result.dimensions.map((d) => d.project)].filter(Boolean)),
+  ];
+  useEffect(() => {
+    if (!authenticated) return;
+    let alive = true;
+    void api<SidebarProject[]>('/projects')
+      .then((rows) => {
+        if (alive && Array.isArray(rows)) setProjects(rows.filter((p) => !p.archived));
+      })
+      .catch(() => {
+        /* Sidebar list is best-effort; the project hub reports errors. */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [authenticated, tick]);
   const mayLeave = async () =>
     !dirtyRef.current ||
     (await confirm({
@@ -363,6 +386,11 @@ function App() {
         if (!abort.signal.aborted) {
           setResult({ ...value, items });
           if (!value.unlocked) lockUi();
+          if (autoPillarRef.current) {
+            autoPillarRef.current = false;
+            const next = preferredPillar(value.dimensions, pillar);
+            if (!global && next !== pillar) setPillar(next);
+          }
         }
       } catch (e) {
         if (!abort.signal.aborted) {
@@ -606,15 +634,19 @@ function App() {
       return;
     setBusy(true);
     try {
-      const result = await api<{ item: Item; warnings: string[] }>('/items/' + entry.id + '/refresh', {
-        method: 'POST',
-      });
+      const result = await api<{ item: Item; warnings: string[]; unchanged?: boolean }>(
+        '/items/' + entry.id + '/refresh',
+        {
+          method: 'POST',
+        },
+      );
       saved(result.item);
       if (selectedIdRef.current === result.item.id) {
         clearDraft();
         setViewEpoch((v) => v + 1);
       }
-      notify(result.warnings.length ? '已同步。' + result.warnings.join('；') : '已同步最新内容');
+      const base = result.unchanged ? '来源内容没有变化，未生成新版本' : '已同步最新内容';
+      notify(result.warnings.length ? base + '。' + result.warnings.join('；') : base);
     } catch (e) {
       notify(errorMessage(e), true);
     } finally {
@@ -768,12 +800,14 @@ function App() {
       <AppFrame>
         <AuthScreen
           initialServerSettings={serverSettings}
-          onLogin={() => {
+          onLogin={(unlockedSession = true) => {
             setServerSettings(false);
             setAuthenticated(true);
-            setUnlocked(true);
-            setResult({ items: [], total: 0, dimensions: [], unlocked: true });
+            setUnlocked(unlockedSession);
+            setResult({ items: [], total: 0, dimensions: [], unlocked: unlockedSession });
+            autoPillarRef.current = true;
             reload();
+            if (takeRestored()) notify('已从备份恢复工作台，数据已全部校验。');
           }}
         />
       </AppFrame>
@@ -812,7 +846,18 @@ function App() {
           }}
           taskCount={activity.active + activity.unread}
           onProjects={async () => {
-            if (await mayLeave()) showModal('projects');
+            if (await mayLeave()) {
+              setProjectFocus(undefined);
+              showModal('projects');
+            }
+          }}
+          projects={projects}
+          onProject={async (id) => {
+            if (await mayLeave()) {
+              setProjectFocus(id);
+              setSidebarOpen(false);
+              showModal('projects');
+            }
           }}
           onOrganize={async () => {
             if (await mayLeave()) {
@@ -927,7 +972,7 @@ function App() {
           pillar={pillar}
           unlocked={unlocked}
           onDraft={modalDraft}
-          projects={[...new Set(result.dimensions.map((d) => d.project).filter(Boolean))]}
+          projects={projectNames}
           onClose={() => {
             setModal(null);
             setEditItem(null);
@@ -974,6 +1019,7 @@ function App() {
           }
         >
           <ProjectHub
+            initialProjectId={projectFocus}
             onClose={() => setModal(null)}
             onChanged={() => {
               clearDraft();
@@ -1044,6 +1090,7 @@ function App() {
       {modal === 'ingest' && (
         <IngestModal
           initialUrl={ingestUrl}
+          projects={projectNames}
           unlocked={unlocked}
           onClose={() => setModal(null)}
           onQueued={() => {

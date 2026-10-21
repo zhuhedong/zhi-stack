@@ -460,3 +460,82 @@ input[type='file']::file-selector-button:hover {
   overflow-wrap: anywhere;
   user-select: text;
 }
+/* Localized file picker: the native control stays focusable and validates
+   (required), but its browser-language label is replaced. */
+.file-picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface, transparent);
+  cursor: pointer;
+}
+.file-picker-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.file-picker:focus-within {
+  outline: 2px solid var(--color-accent, #2f6bff);
+  outline-offset: 1px;
+}
+.file-picker-button {
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  background: var(--color-raised);
+  white-space: nowrap;
+}
+.file-picker:hover .file-picker-button {
+  background: var(--color-hover);
+}
+.file-picker-name {
+  overflow: hidden;
+  color: var(--color-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.getting-started-count {
+  margin-left: var(--space-sm);
+  color: var(--color-muted);
+  font-weight: 400;
+}
+/* Phones: one compact row (title, scrollable step chips, close) instead of a
+   stacked block taking a fifth of the screen. */
+@media (max-width: 650px) {
+  .getting-started {
+    flex-wrap: nowrap;
+    gap: var(--space-sm);
+    padding: 6px var(--space-md);
+  }
+  .getting-started > strong {
+    flex-shrink: 0;
+    font-size: var(--text-small);
+    white-space: nowrap;
+  }
+  .getting-started-steps {
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .getting-started-steps::-webkit-scrollbar {
+    display: none;
+  }
+  .getting-started-steps button {
+    flex-shrink: 0;
+    padding: 3px 8px;
+    white-space: nowrap;
+  }
+  .getting-started > .icon-button {
+    flex-shrink: 0;
+  }
+}

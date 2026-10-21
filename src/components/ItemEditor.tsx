@@ -1,3 +1,4 @@
+import { ProjectInput } from './ProjectInput';
 import { Select } from './ui/Select';
 import { Form } from './Form';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -278,17 +279,11 @@ export function ItemEditor({
               </label>
               <label>
                 所属项目
-                <input
-                  list="project-options"
+                <ProjectInput
                   value={form.project}
-                  onChange={(e) => change({ project: e.target.value })}
-                  placeholder="选择或输入项目名称"
+                  projects={projects}
+                  onChange={(project) => change({ project })}
                 />
-                <datalist id="project-options">
-                  {projects.map((p) => (
-                    <option key={p}>{p}</option>
-                  ))}
-                </datalist>
               </label>
               <label>
                 标签

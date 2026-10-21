@@ -48,7 +48,12 @@ export function GettingStarted({
   }
   return (
     <aside className="getting-started" aria-label="首次使用引导">
-      <strong>{complete ? '已完成首次工作流' : '开始使用工作台'}</strong>
+      <strong>
+        {complete ? '已完成首次工作流' : '开始使用工作台'}
+        <small className="getting-started-count mono">
+          {steps.filter((step) => step.done).length}/{steps.length}
+        </small>
+      </strong>
       <div className="getting-started-steps">
         {steps.map((step, index) => (
           <button key={step.title} onClick={step.action} className={step.done ? 'good' : ''}>

@@ -4,6 +4,7 @@ import type { Item } from '../../types';
 import { copyText, errorMessage } from '../../lib/api';
 import { connectionCommand } from '../../lib/request';
 import { Attachments } from '../Attachments';
+import { Markdown } from '../LazyMarkdown';
 
 const ApiWorkbench = lazy(() => import('../ApiWorkbench').then((m) => ({ default: m.ApiWorkbench })));
 import { fieldNames, secretField } from '../../lib/fields';
@@ -36,7 +37,12 @@ export function CredentialView({
           <span className="tag mono">{item.data.typeKey || item.category}</span>
         </div>
         <h1>{item.title}</h1>
-        {item.data.description && <p className="content-description">{item.data.description}</p>}
+        {item.data.description && (
+          // OpenAPI descriptions are CommonMark; react-markdown skips raw HTML and filters unsafe URLs.
+          <div className="content-description">
+            <Markdown text={item.data.description} />
+          </div>
+        )}
       </div>
       {error && (
         <div className="error" role="alert">

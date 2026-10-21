@@ -110,7 +110,7 @@ export function usePersistentDraft<T>({
       let candidate = cached;
       let error = '';
       try {
-        const result = await api<Stored<T>>(path);
+        const result = await api<Stored<T> | null>(path + '?optional=true');
         if (!current) return;
         const remote =
           result && typeof result.generation === 'number' && 'payload' in result ? result : undefined;

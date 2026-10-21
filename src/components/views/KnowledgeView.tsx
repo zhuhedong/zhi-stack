@@ -1,3 +1,4 @@
+import { stripLeadingTitle } from '../../lib/markdownText';
 import { useRef, useState } from 'react';
 import { Check, Code2, Download, FileText, Image, Save } from 'lucide-react';
 import type { Item } from '../../types';
@@ -151,7 +152,10 @@ export function KnowledgeView({
         </div>
       )}
       {mode === 'flow' ? (
-        <Markdown baseUrl={item.url || undefined} text={text || '暂无正文。切换到 Markdown 添加内容。'} />
+        <Markdown
+          baseUrl={item.url || undefined}
+          text={stripLeadingTitle(text, item.title) || '暂无正文。切换到 Markdown 添加内容。'}
+        />
       ) : (
         <section className="markdown-editor">
           <div className="section-title">

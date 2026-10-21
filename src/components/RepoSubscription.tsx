@@ -1,3 +1,4 @@
+import { formatDateTime } from '../lib/format';
 import { Select } from './ui/Select';
 import { useEffect, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
@@ -126,9 +127,9 @@ export function RepoSubscription({ itemId }: { itemId: string }) {
       )}
       {subscription?.last_checked_at && (
         <p className="muted">
-          上次检查：{new Date(subscription.last_checked_at).toLocaleString()}
+          上次检查：{formatDateTime(subscription.last_checked_at)}
           {subscription.enabled && subscription.next_check_at
-            ? ` · 下次：${new Date(subscription.next_check_at).toLocaleString()}`
+            ? ` · 下次：${formatDateTime(subscription.next_check_at)}`
             : ''}
         </p>
       )}
@@ -145,7 +146,7 @@ export function RepoSubscription({ itemId }: { itemId: string }) {
             </button>
           </div>
           {subscription.snapshot.pushedAt && (
-            <p className="muted">最近推送：{new Date(subscription.snapshot.pushedAt).toLocaleString()}</p>
+            <p className="muted">最近推送：{formatDateTime(subscription.snapshot.pushedAt)}</p>
           )}
           {subscription.snapshot.releaseUrl && (
             <SourceLink href={subscription.snapshot.releaseUrl}>查看发布页面</SourceLink>
@@ -158,7 +159,7 @@ export function RepoSubscription({ itemId }: { itemId: string }) {
           <summary>最近检查记录（保留 100 次，展示最近 20 次）</summary>
           {data.checks.map((check) => (
             <p className="muted" key={check.id}>
-              {new Date(check.created_at).toLocaleString()} ·{' '}
+              {formatDateTime(check.created_at)} ·{' '}
               {check.status === 'success' ? '成功' : check.status === 'partial' ? '部分成功' : '失败'}{' '}
               {check.message}
             </p>

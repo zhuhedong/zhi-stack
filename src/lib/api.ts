@@ -16,6 +16,7 @@ export async function configureServer(value: string) {
   const config = await saveServerUrl(value);
   API_BASE = config.serverUrl || '';
   token = '';
+  persistToken('');
   connectionRevision++;
   return config;
 }
@@ -29,9 +30,59 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
+// The session token lives in sessionStorage so a page refresh (F5) keeps the
+// login; it is dropped when the tab/window closes. Vault auto-lock is
+// enforced server-side and is unaffected.
+const SESSION_KEY = 'infohub:session';
+function persistToken(value: string) {
+  try {
+    if (value) sessionStorage.setItem(SESSION_KEY, JSON.stringify({ base: API_BASE, token: value }));
+    else sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* Storage may be disabled; the token then lives in memory only. */
+  }
+}
+/** Token saved by this tab for the current server, if any. */
+export function storedToken(): string {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null') as {
+      base?: string;
+      token?: string;
+    } | null;
+    return saved && saved.base === API_BASE && typeof saved.token === 'string' ? saved.token : '';
+  } catch {
+    return '';
+  }
+}
 export function setToken(value: string) {
   if (token !== value) connectionRevision++;
   token = value;
+  persistToken(value);
+}
+const RESTORED_KEY = 'infohub:restored';
+/** Remember across the forced re-login that a backup restore just succeeded. */
+export function markRestored() {
+  try {
+    sessionStorage.setItem(RESTORED_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+export function restoredPending(): boolean {
+  try {
+    return sessionStorage.getItem(RESTORED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+export function takeRestored(): boolean {
+  const pending = restoredPending();
+  try {
+    sessionStorage.removeItem(RESTORED_KEY);
+  } catch {
+    /* ignore */
+  }
+  return pending;
 }
 export async function request(path: string, options: RequestInit = {}): Promise<Response> {
   if (!API_BASE) throw new ApiError('请先填写并保存服务端地址。', 0);

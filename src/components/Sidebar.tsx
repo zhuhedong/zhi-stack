@@ -1,5 +1,12 @@
 import { BookOpen, ChevronRight, Folder, Radar, Layers, LockKeyhole, ShieldCheck, Star } from 'lucide-react';
 import { categories, pillarNames, type Dimension, type Pillar } from '../types';
+export interface SidebarProject {
+  id: string;
+  name: string;
+  archived?: boolean;
+  /** Assets of every type in this project. */
+  count?: number;
+}
 const icons = { knowledge: BookOpen, repo: Radar, credential: LockKeyhole };
 export function Sidebar({
   pillar,
@@ -16,6 +23,8 @@ export function Sidebar({
   onTasks,
   onInsights,
   taskCount,
+  projects = [],
+  onProject,
 }: {
   pillar: Pillar;
   dimensions: Dimension[];
@@ -31,6 +40,8 @@ export function Sidebar({
   onTasks: () => void;
   onInsights: () => void;
   taskCount: number;
+  projects?: SidebarProject[];
+  onProject?: (id: string) => void;
 }) {
   const counts = (kind: Pillar) => dimensions.filter((d) => d.kind === kind).reduce((n, d) => n + d.count, 0);
   const groups = new Map<string, number>();
@@ -67,14 +78,18 @@ export function Sidebar({
           </nav>
           <div className="dimension-tree">
             <div className="nav-label">
-              {pillar === 'credential' ? '按业务项目' : pillar === 'knowledge' ? '按内容来源' : '按开发语言'}
+              {pillar === 'credential'
+                ? '密码库 · 按项目'
+                : pillar === 'knowledge'
+                  ? '按内容来源'
+                  : '按开发语言'}
             </div>
             <button
               className={'dimension-item ' + (dimension === 'all' ? 'active' : '')}
               onClick={() => onDimension('all')}
             >
               <Layers size={13} />
-              <span>全部{pillar === 'credential' ? '项目' : pillar === 'knowledge' ? '来源' : '语言'}</span>
+              <span>全部{pillar === 'credential' ? '凭证' : pillar === 'knowledge' ? '来源' : '语言'}</span>
               <small>{counts(pillar)}</small>
             </button>
             {[...groups].map(([key, count]) => (
@@ -91,6 +106,20 @@ export function Sidebar({
               </button>
             ))}
           </div>
+          {projects.length > 0 && (
+            <div className="dimension-tree" aria-label="业务项目">
+              <div className="nav-label" title="数字为项目内全部类型资产的数量">
+                业务项目 · 全部资产
+              </div>
+              {projects.map((project) => (
+                <button className="dimension-item" key={project.id} onClick={() => onProject?.(project.id)}>
+                  <Folder size={13} />
+                  <span>{project.name}</span>
+                  <small>{project.count ?? 0}</small>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="dimension-tree">
             <div className="nav-label">快捷视图</div>
             <button className="dimension-item" onClick={onTasks}>

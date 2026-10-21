@@ -108,7 +108,7 @@ export const pillarNames: Record<Pillar, string> = {
   credential: '服务器与密码库',
 };
 export const categories: Record<Pillar, Record<string, string>> = {
-  knowledge: { wechat: '微信公众号', forum: '技术论坛', blog: '架构博客', note: '个人笔记' },
+  knowledge: { wechat: '微信公众号', forum: '技术论坛', blog: '博客与网页', note: '个人笔记' },
   repo: { Rust: 'Rust', Go: 'Go', TypeScript: 'TypeScript', Python: 'Python' },
   credential: {
     http: 'REST / Swagger',
@@ -131,3 +131,11 @@ export const sizeLabel = (bytes: number) =>
     : bytes < 1024 * 1024
       ? `${(bytes / 1024).toFixed(1)} KB`
       : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/** Pillar to open after login: keep `current` if it has items, else the first
+ * with content, preferring articles, then repos, then the vault. */
+export function preferredPillar(dimensions: Dimension[], current: Pillar): Pillar {
+  const count = (kind: Pillar) => dimensions.filter((d) => d.kind === kind).reduce((n, d) => n + d.count, 0);
+  if (count(current) > 0) return current;
+  return (['knowledge', 'repo', 'credential'] as Pillar[]).find((p) => count(p) > 0) ?? current;
+}

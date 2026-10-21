@@ -1,7 +1,15 @@
 import { Form } from './Form';
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
 import { ArrowRight, BookOpen, Radar, LockKeyhole, LoaderCircle, RefreshCw, ShieldCheck } from 'lucide-react';
-import { api, API_BASE, errorMessage, initializeServer, setToken } from '../lib/api';
+import {
+  api,
+  API_BASE,
+  errorMessage,
+  initializeServer,
+  restoredPending,
+  setToken,
+  storedToken,
+} from '../lib/api';
 import { BrandIcon } from './BrandIcon';
 import { isDesktop } from '../lib/platform';
 import { ServerSettings } from './ServerSettings';
@@ -15,7 +23,7 @@ export function AuthScreen({
   onLogin,
   initialServerSettings = false,
 }: {
-  onLogin: () => void;
+  onLogin: (unlocked?: boolean) => void;
   initialServerSettings?: boolean;
 }) {
   const [initialized, setInitialized] = useState<boolean | null>(null);
@@ -60,9 +68,23 @@ export function AuthScreen({
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), 8000);
     api<unknown>('/health', { signal: abort.signal })
-      .then((v) => {
+      .then(async (v) => {
+        if (!alive) return;
+        const ready = serverInitialized(v);
+        // A refresh keeps this tab's session: resume it instead of asking again.
+        const saved = ready ? storedToken() : '';
+        if (saved) {
+          setToken(saved);
+          try {
+            const session = await api<{ unlocked: boolean }>('/session', { signal: abort.signal });
+            if (alive) onLogin(session.unlocked);
+            return;
+          } catch {
+            setToken('');
+          }
+        }
         if (alive) {
-          setInitialized(serverInitialized(v));
+          setInitialized(ready);
           setError('');
         }
       })
@@ -238,6 +260,11 @@ export function AuthScreen({
                     </p>
                     <p className="form-hint">请妥善保存主密码。它无法找回，丢失后将无法解密已保存的凭证。</p>
                   </>
+                )}
+                {restoredPending() && initialized && (
+                  <div className="info" role="status">
+                    备份已恢复成功，请使用备份时的主密码登录。
+                  </div>
                 )}
                 {error && (
                   <div className="error" role="alert">

@@ -18,10 +18,13 @@ export function ProjectHub({
   onClose,
   onOpen,
   onChanged,
+  initialProjectId,
 }: {
   onClose: () => void;
   onOpen: (item: Item) => void;
   onChanged: () => void;
+  /** Open this project directly (e.g. clicked in the sidebar). */
+  initialProjectId?: string;
 }) {
   const confirm = useConfirm();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -51,6 +54,10 @@ export function ProjectHub({
       alive = false;
     };
   }, []);
+  useEffect(() => {
+    if (initialProjectId) void select(initialProjectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialProjectId]);
   const dirty =
     editing &&
     (name !== (selected?.name || '') ||
@@ -167,16 +174,20 @@ export function ProjectHub({
                   placeholder="记录目标、当前进展和下次开始的位置"
                 />
               </label>
-              <label className="search-scope">
-                <input
-                  type="checkbox"
-                  checked={archived}
-                  disabled={busy}
-                  onChange={(e) => setArchived(e.target.checked)}
-                />
-                归档项目
-              </label>
-              <p className="muted">重命名会更新所属资产；归档项目仍保留全部资料。</p>
+              {selected && (
+                <>
+                  <label className="search-scope">
+                    <input
+                      type="checkbox"
+                      checked={archived}
+                      disabled={busy}
+                      onChange={(e) => setArchived(e.target.checked)}
+                    />
+                    归档项目
+                  </label>
+                  <p className="muted">重命名会更新所属资产；归档项目仍保留全部资料。</p>
+                </>
+              )}
               <button className="primary" disabled={busy}>
                 保存项目
               </button>

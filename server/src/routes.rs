@@ -573,8 +573,8 @@ pub async fn refresh(
         return Err(AppError::bad("来源类型发生变化，请作为新条目收录"));
     }
     preserve_sync_data(&previous, &mut collected);
-    collected.input.project = previous.project;
-    collected.input.tags = previous.tags;
+    collected.input.project = previous.project.clone();
+    collected.input.tags = previous.tags.clone();
     collected.input.favorite = previous.favorite;
     collected.input.revision = Some(previous.revision);
     for field in [
@@ -599,6 +599,33 @@ pub async fn refresh(
         );
     }
     collected.input.validate()?;
+    // Nothing new upstream: skip the write so no empty "同步前" version piles up.
+    let previous_media: std::collections::HashMap<String, String> =
+        sqlx::query_as::<_, (Uuid, String)>("SELECT id,sha256 FROM media WHERE item_id=$1")
+            .bind(id)
+            .fetch_all(&state.db)
+            .await?
+            .into_iter()
+            .map(|(media, hash)| (media.to_string(), hash))
+            .collect();
+    let collected_media: std::collections::HashMap<String, String> = collected
+        .images
+        .iter()
+        .map(|image| (image.id.to_string(), image.hash.clone()))
+        .collect();
+    if collected.input.kind == previous.kind
+        && collected.input.title == previous.title
+        && collected.input.category == previous.category
+        && collected.input.url == previous.url
+        && canonical_media(
+            &json!([collected.input.summary, collected.input.data]),
+            &collected_media,
+        ) == canonical_media(&json!([previous.summary, previous.data]), &previous_media)
+    {
+        return Ok(Json(
+            json!({"item":previous,"warnings":collected.warnings,"unchanged":true}),
+        ));
+    }
     stage_images(&state, &collected).await?;
     let mut tx = state.db.begin().await?;
     sqlx::query("SELECT set_config('infohub.change_reason','sync',true)")
@@ -672,6 +699,22 @@ async fn persist_linked_repo(
     Ok(Some(saved.title))
 }
 
+/// Archived images get a fresh `/api/media/<uuid>` on every collection, so
+/// compare item data with those ids replaced by the image content hash.
+fn canonical_media(data: &Value, media: &std::collections::HashMap<String, String>) -> String {
+    static MEDIA: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"/api/media/([0-9a-fA-F-]{36})").expect("valid media pattern")
+    });
+    MEDIA
+        .replace_all(&data.to_string(), |c: &regex::Captures| {
+            let id = c[1].to_ascii_lowercase();
+            format!(
+                "media:{}",
+                media.get(&id).map_or(id.as_str(), String::as_str)
+            )
+        })
+        .into_owned()
+}
 fn preserve_sync_data(previous: &Item, collected: &mut Collected) {
     if previous.kind == "credential" {
         if let Some(fields) = previous.data["fields"].as_object() {

@@ -1,3 +1,4 @@
+import { ProjectInput } from './ProjectInput';
 import { Select } from './ui/Select';
 import { Form } from './Form';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -14,8 +15,10 @@ export function IngestModal({
   onClose,
   onQueued,
   onDraft,
+  projects = [],
 }: {
   initialUrl: string;
+  projects?: string[];
   unlocked?: boolean;
   onClose: () => void;
   onQueued: (id: string) => void;
@@ -143,7 +146,7 @@ export function IngestModal({
           <div className="form-grid">
             <label>
               所属项目
-              <input value={project} onChange={(e) => setProject(e.target.value)} disabled={busy} />
+              <ProjectInput value={project} projects={projects} onChange={setProject} disabled={busy} />
             </label>
             <label>
               标签

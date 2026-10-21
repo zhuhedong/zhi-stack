@@ -1,3 +1,4 @@
+import { markdownSnippet } from '../lib/markdownText';
 import { FilterTabs } from './FilterTabs';
 import { Select } from './ui/Select';
 import { Inbox, LoaderCircle, Search, Star, X } from 'lucide-react';
@@ -187,8 +188,8 @@ export function ListPanel({
               </div>
               <h3>{item.title}</h3>
               <p>
-                {item.matchSnippet ||
-                  item.summary ||
+                {markdownSnippet(item.matchSnippet || '') ||
+                  markdownSnippet(item.summary || '') ||
                   item.project ||
                   (item.kind === 'credential' ? '加密资产 · 点击查看连接属性' : item.url)}
               </p>

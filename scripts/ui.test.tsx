@@ -42,6 +42,10 @@ vi.mock('@tauri-apps/api/window', () => ({
 vi.mock('../src/lib/api', () => ({
   ...mocks,
   API_BASE: '/api',
+  storedToken: () => '',
+  restoredPending: () => false,
+  takeRestored: () => false,
+  markRestored: vi.fn(),
   setToken: vi.fn(),
   errorMessage: (e: Error) => e.message,
 }));
@@ -591,6 +595,7 @@ test('locked credential context menu offers unlock instead of destructive action
   await render(<App />);
   await fill(input('主密码'), 'test-password');
   await submit();
+  await click('服务器与密码库1');
   await act(async () => window.dispatchEvent(new Event('infohub:locked')));
   await act(async () =>
     host
@@ -1216,13 +1221,15 @@ test('switching asset kind does not keep the previous filter rows', async () => 
   mocks.api.mockImplementation(async (path: string, options?: RequestInit) => {
     if (path.startsWith('/items?') && path.includes('kind=knowledge')) {
       knowledgeLists += 1;
-      if (knowledgeLists === 1) return pending.promise;
+      // The first knowledge list is the post-login default view; hold the next one.
+      if (knowledgeLists === 2) return pending.promise;
     }
     return fallback(path, options);
   });
   await render(<App />);
   await fill(input('主密码'), 'test-password');
   await submit();
+  await click('服务器与密码库1');
   expect(host.textContent).toContain('验收接口');
   await click('知识与文章1');
   expect(host.querySelector('.list-item')).toBeNull();
