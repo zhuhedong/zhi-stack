@@ -2774,3 +2774,17 @@ input[type='checkbox'] {
   font-size: 11px;
   word-break: break-all;
 }
+.feed-form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.feed-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.feed-url {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}

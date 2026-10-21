@@ -5,6 +5,7 @@ pub mod config;
 pub mod crypto;
 pub mod download;
 pub mod error;
+pub mod feeds;
 pub mod files;
 pub mod ingest;
 pub mod insights;
@@ -55,6 +56,7 @@ pub struct AppState {
         Arc<Mutex<std::collections::HashMap<uuid::Uuid, tokio_util::sync::CancellationToken>>>,
     pub jobs_notify: Arc<Notify>,
     pub subscriptions_notify: Arc<Notify>,
+    pub feeds_notify: Arc<Notify>,
     pub github_api_base: String,
 }
 impl AppState {
@@ -87,6 +89,7 @@ impl AppState {
             active_jobs: Default::default(),
             jobs_notify: Default::default(),
             subscriptions_notify: Default::default(),
+            feeds_notify: Default::default(),
             github_api_base: settings.github_api_base.clone(),
             settings: Arc::new(settings),
         }
@@ -218,6 +221,16 @@ pub fn router(state: AppState) -> Router {
         .route("/jobs/{id}/retry", post(jobs::retry))
         .route("/jobs/{id}", axum::routing::delete(jobs::delete))
         .route("/subscriptions", get(subscriptions::all))
+        .route("/feeds", get(feeds::list).post(feeds::add))
+        .route(
+            "/feeds/opml",
+            get(feeds::export_opml).post(feeds::import_opml),
+        )
+        .route(
+            "/feeds/{id}",
+            axum::routing::delete(feeds::remove).put(feeds::update),
+        )
+        .route("/feeds/{id}/check", post(feeds::request_check))
         .route(
             "/items/{id}/subscription",
             get(subscriptions::get).put(subscriptions::update),
