@@ -205,7 +205,7 @@ pub async fn list(
             .build_query_scalar::<i64>()
             .fetch_one(&state.db)
             .await? as usize;
-        let mut select=QueryBuilder::new("SELECT i.id,i.kind,i.title,i.category,i.project,i.tags,i.summary,i.url,CASE WHEN i.kind='repo' THEN jsonb_build_object('stars',i.data->'stars') ELSE '{}'::jsonb END AS data,NULL::bytea AS secret,i.favorite,i.revision,i.created_at,i.updated_at");
+        let mut select=QueryBuilder::new("SELECT i.id,i.kind,i.title,i.category,i.project,i.tags,i.summary,i.url,CASE WHEN i.kind='repo' THEN jsonb_build_object('stars',i.data->'stars') WHEN i.kind='knowledge' THEN jsonb_build_object('content',i.data->'content') ELSE '{}'::jsonb END AS data,NULL::bytea AS secret,i.favorite,i.revision,i.created_at,i.updated_at");
         filters(&mut select, &filter);
         select
             .push(format!(" ORDER BY {order} LIMIT "))
@@ -217,6 +217,8 @@ pub async fn list(
             .fetch_all(&state.db)
             .await?
         {
+            let mut row = row;
+            row.data = list_data(&row.kind, &row.data);
             hits.push(Hit {
                 item: row.public(None, false)?,
                 score: 0,
@@ -251,11 +253,7 @@ pub async fn list(
                 continue;
             };
             matches += 1;
-            item.data = if item.kind == "repo" {
-                json!({"stars":item.data["stars"]})
-            } else {
-                json!({})
-            };
+            item.data = list_data(&item.kind, &item.data);
             let hit = Hit {
                 item: item.public(None, false)?,
                 score,
@@ -425,6 +423,56 @@ mod tests {
         assert_eq!(
             data_snippet(&json!({"nested":["D:\\work\n中文"]}), "\\work\n中").unwrap(),
             "D:\\work\n中文"
+        );
+    }
+}
+
+/// Reading speed: ~400 CJK characters or ~200 English words per minute
+/// (mirrors `src/lib/readingTime.ts`).
+pub fn reading_minutes(markdown: &str) -> u64 {
+    use std::sync::LazyLock;
+    static STRIP: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"!\[[^\]]*\]\([^)]*\)|<[^>]+>").unwrap());
+    static LINK: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\]\([^)]*\)").unwrap());
+    static CJK: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"[\x{3400}-\x{4dbf}\x{4e00}-\x{9fff}\x{f900}-\x{faff}\x{3040}-\x{30ff}\x{ac00}-\x{d7af}]").unwrap()
+    });
+    static WORD: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"[A-Za-z0-9][A-Za-z0-9'’_-]*").unwrap());
+    let text = STRIP.replace_all(markdown, " ");
+    let text = LINK.replace_all(&text, "]");
+    let cjk = CJK.find_iter(&text).count() as f64;
+    let words = WORD.find_iter(&CJK.replace_all(&text, " ")).count() as f64;
+    let minutes = cjk / 400.0 + words / 200.0;
+    if minutes == 0.0 {
+        0
+    } else {
+        (minutes.round() as u64).max(1)
+    }
+}
+/// The small `data` object list rows carry instead of full bodies.
+fn list_data(kind: &str, data: &Value) -> Value {
+    match kind {
+        "repo" => json!({"stars":data["stars"]}),
+        "knowledge" => {
+            json!({"readingMinutes":reading_minutes(data["content"].as_str().unwrap_or_default())})
+        }
+        _ => json!({}),
+    }
+}
+#[cfg(test)]
+mod reading_tests {
+    use super::reading_minutes;
+    #[test]
+    fn reading_time_mixes_scripts() {
+        assert_eq!(reading_minutes(""), 0);
+        assert_eq!(reading_minutes("短"), 1);
+        assert_eq!(reading_minutes(&"字".repeat(800)), 2);
+        assert_eq!(reading_minutes(&vec!["word"; 600].join(" ")), 3);
+        assert_eq!(
+            reading_minutes(&format!("![图](/api/media/abc-123) {}", "字".repeat(400))),
+            1
         );
     }
 }

@@ -1,3 +1,4 @@
+import { itemReadingLabel } from '../lib/readingTime';
 import { markdownSnippet } from '../lib/markdownText';
 import { FilterTabs } from './FilterTabs';
 import { Select } from './ui/Select';
@@ -184,6 +185,9 @@ export function ListPanel({
             >
               <div className="list-item-meta">
                 <span className={'badge ' + item.kind}>{categoryName(item)}</span>
+                {item.kind === 'knowledge' && itemReadingLabel(item.data) && (
+                  <small className="reading-time">{itemReadingLabel(item.data)}</small>
+                )}
                 <small className="mono">{dateLabel(item.updatedAt)}</small>
               </div>
               <h3>{item.title}</h3>

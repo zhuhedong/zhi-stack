@@ -60,3 +60,22 @@ test('VersionDiff shows changed fields and body lines in Chinese', () => {
   expect(host.textContent).toContain('+1');
   act(() => root.unmount());
 });
+
+import { readingLabel, readingMinutes } from '../src/lib/readingTime';
+test('reading time mixes Chinese characters and English words', () => {
+  expect(readingMinutes('')).toBe(0);
+  expect(readingMinutes('短')).toBe(1);
+  expect(readingMinutes('字'.repeat(800))).toBe(2);
+  expect(readingMinutes(Array(600).fill('word').join(' '))).toBe(3);
+  expect(readingMinutes('字'.repeat(400) + ' ' + Array(200).fill('go').join(' '))).toBe(2);
+  expect(readingMinutes('![图](/api/media/abc-123) ' + '字'.repeat(400))).toBe(1);
+  expect(readingLabel('字'.repeat(1200))).toBe('约 3 分钟');
+  expect(readingLabel(undefined)).toBe('');
+});
+
+import { itemReadingLabel } from '../src/lib/readingTime';
+test('list rows use the server reading estimate', () => {
+  expect(itemReadingLabel({ readingMinutes: 7 })).toBe('约 7 分钟');
+  expect(itemReadingLabel({ readingMinutes: 0, content: '字'.repeat(4000) })).toBe('');
+  expect(itemReadingLabel({ content: '字'.repeat(4000) })).toBe('约 10 分钟');
+});

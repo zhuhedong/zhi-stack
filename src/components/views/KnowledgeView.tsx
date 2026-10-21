@@ -1,3 +1,4 @@
+import { readingLabel } from '../../lib/readingTime';
 import { stripLeadingTitle } from '../../lib/markdownText';
 import { useRef, useState } from 'react';
 import { Check, Code2, Download, FileText, Image, Save } from 'lucide-react';
@@ -89,6 +90,7 @@ export function KnowledgeView({
           <span>{item.data.author || '未填写作者'}</span>
           <span>{item.data.sourceName || '个人笔记'}</span>
           <span>{dateLabel(item.updatedAt)}</span>
+          {readingLabel(text) && <span>阅读{readingLabel(text)}</span>}
           <span>
             <Image size={12} />
             {item.data.imagesCount || 0} 张离线图片
