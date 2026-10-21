@@ -3078,3 +3078,11 @@ input[type='checkbox'] {
   word-break: break-all;
   user-select: all;
 }
+.offline-reader,
+.offline-settings {
+  display: grid;
+  gap: 10px;
+}
+.offline-settings h3 {
+  margin: 8px 0 0;
+}

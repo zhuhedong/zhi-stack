@@ -447,3 +447,60 @@ test('api tokens: created token is shown once with chosen scopes', async () => {
   );
   expect(host.querySelector('.token-created')).toBeNull();
 });
+
+test('pwa: share target and bookmarklet URLs', async () => {
+  const { sharedUrl } = await import('../src/lib/offline');
+  expect(sharedUrl('?save=https://a.example/x')).toBe('https://a.example/x');
+  expect(sharedUrl('?url=https://b.example/y&title=t')).toBe('https://b.example/y');
+  expect(sharedUrl('?title=t&text=' + encodeURIComponent('看看这篇 https://c.example/z?q=1 不错'))).toBe(
+    'https://c.example/z?q=1',
+  );
+  expect(sharedUrl('?url=javascript:alert(1)')).toBe('');
+  expect(sharedUrl('?text=hello')).toBe('');
+});
+
+test('pwa: offline article store is opt-in, knowledge-only and bounded', async () => {
+  const store = new Map<string, Map<string, string>>();
+  const cacheFor = (name: string) => {
+    if (!store.has(name)) store.set(name, new Map());
+    const map = store.get(name)!;
+    return {
+      match: async (key: string) => (map.has(key) ? new Response(map.get(key)) : undefined),
+      put: async (key: string, response: Response) => void map.set(key, await response.text()),
+      delete: async (key: string) => map.delete(key),
+    };
+  };
+  vi.stubGlobal('caches', {
+    open: async (name: string) => cacheFor(name),
+    delete: async (name: string) => store.delete(name),
+  });
+  vi.resetModules();
+  const offline = await import('../src/lib/offline');
+  const item = (id: string, kind = 'knowledge') =>
+    ({
+      id,
+      kind,
+      title: '文章 ' + id,
+      url: '',
+      project: '',
+      tags: [],
+      updatedAt: '',
+      data: { content: '正文 ' + id },
+    }) as unknown as import('../src/types').Item;
+  expect(await offline.saveOffline(item('a'))).toBe(false);
+  await offline.setOfflineEnabled(true);
+  expect(await offline.saveOffline(item('a'))).toBe(true);
+  expect(await offline.saveOffline(item('s', 'credential'))).toBe(false);
+  for (let i = 0; i < 205; i++) await offline.saveOffline(item('n' + i));
+  const list = await offline.listOffline();
+  expect(list).toHaveLength(200);
+  expect(list[0].id).toBe('n204');
+  expect(await offline.readOffline('a')).toBeNull();
+  expect((await offline.readOffline('n204'))!.content).toBe('正文 n204');
+  await offline.removeOffline('n204');
+  expect((await offline.listOffline())[0].id).toBe('n203');
+  await offline.setOfflineEnabled(false);
+  expect(store.has('infohub-articles')).toBe(false);
+  expect(await offline.listOffline()).toEqual([]);
+  vi.unstubAllGlobals();
+});
