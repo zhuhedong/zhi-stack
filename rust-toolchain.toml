@@ -1,0 +1,4 @@
+[toolchain]
+# Server needs >= 1.89 (server/Cargo.toml rust-version); CI also uses stable.
+channel = "stable"
+components = ["rustfmt", "clippy"]

@@ -194,18 +194,42 @@ fn too_many(wait: Duration) -> AppError {
     )
 }
 
+/// SHA-256 hex of the `Authorization: Bearer` token, the key `state.sessions` uses.
+fn bearer_hash(headers: &axum::http::HeaderMap) -> Result<String> {
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(AppError::unauthorized)?;
+    Ok(hex::encode(Sha256::digest(token.as_bytes())))
+}
+
+/// Checks for a live session without the middleware's side effects (no idle
+/// key expiry, no touch), for routes that must also work before setup.
+pub(crate) async fn require_session(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+) -> Result<()> {
+    let token = bearer_hash(headers)?;
+    let valid = state
+        .sessions
+        .lock()
+        .await
+        .get(&token)
+        .is_some_and(|s| s.expires > Instant::now());
+    if valid {
+        Ok(())
+    } else {
+        Err(AppError::unauthorized())
+    }
+}
+
 pub async fn middleware(
     State(state): State<AppState>,
     mut request: Request,
     next: Next,
 ) -> Result<Response> {
-    let token = request
-        .headers()
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .ok_or_else(AppError::unauthorized)?;
-    let token = hex::encode(Sha256::digest(token.as_bytes()));
+    let token = bearer_hash(request.headers())?;
     let mut sessions = state.sessions.lock().await;
     sessions.retain(|_, s| s.expires > Instant::now());
     let session = sessions
