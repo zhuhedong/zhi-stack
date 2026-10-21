@@ -2687,3 +2687,69 @@ input[type='checkbox'] {
 .project-options li:hover {
   background: var(--color-hover);
 }
+.version-mode {
+  margin-block: var(--space-sm);
+  width: fit-content;
+}
+.version-diff .diff-fields {
+  display: grid;
+  gap: 6px;
+  margin-block: var(--space-sm);
+}
+.diff-field {
+  display: grid;
+  grid-template-columns: 48px 1fr 1fr;
+  gap: 8px;
+  font-size: 12px;
+  align-items: start;
+}
+.diff-field-label {
+  color: var(--color-muted);
+}
+.diff-field del,
+.diff-del {
+  background: var(--color-rose-tint);
+  color: var(--color-rose);
+}
+.diff-field ins,
+.diff-add {
+  background: rgba(16, 185, 129, 0.12);
+  color: #0f766e;
+  text-decoration: none;
+}
+:root[data-theme='dark'] .diff-field ins,
+:root[data-theme='dark'] .diff-add {
+  color: #5eead4;
+}
+.diff-add-count {
+  color: #0f9f6e;
+}
+.diff-del-count {
+  color: var(--color-rose);
+}
+.diff-lines {
+  max-height: 55vh;
+  overflow: auto;
+  margin: 0;
+  padding: 6px 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.diff-lines > div {
+  padding: 0 10px;
+}
+.diff-sign {
+  display: inline-block;
+  width: 16px;
+  user-select: none;
+  color: var(--color-muted);
+}
+.diff-gap {
+  color: var(--color-muted);
+  font-style: italic;
+  background: var(--color-hover);
+}
