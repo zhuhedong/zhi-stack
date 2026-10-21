@@ -1,3 +1,4 @@
+import { ApiTokens } from './ApiTokens';
 import { NotificationSettings } from './NotificationSettings';
 import { ScheduledBackups } from './ScheduledBackups';
 import { PasswordHealth } from './PasswordHealth';
@@ -220,6 +221,7 @@ export function DataManager({
           security: '主密码',
           bookmarklet: '一键收藏',
           notifications: '通知',
+          tokens: 'API 令牌',
         }).map(([key, label]) => (
           <button
             key={key}
@@ -407,6 +409,7 @@ export function DataManager({
         {tab === 'health' && <PasswordHealth />}
         {tab === 'bookmarklet' && <BookmarkletSettings />}
         {tab === 'notifications' && <NotificationSettings />}
+        {tab === 'tokens' && <ApiTokens />}
         {tab === 'security' && (
           <Form
             className="maintenance-form"

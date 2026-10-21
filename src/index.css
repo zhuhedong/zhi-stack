@@ -3063,3 +3063,18 @@ input[type='checkbox'] {
   display: grid;
   gap: 10px;
 }
+.api-tokens {
+  display: grid;
+  gap: 10px;
+}
+.token-created {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+.token-created code {
+  word-break: break-all;
+  user-select: all;
+}

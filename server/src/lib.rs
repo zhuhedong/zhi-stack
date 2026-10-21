@@ -1,4 +1,5 @@
 pub mod api_history;
+pub mod api_tokens;
 pub mod auth;
 pub mod backup;
 pub mod config;
@@ -13,6 +14,7 @@ pub mod insights;
 pub mod jobs;
 pub mod library;
 pub mod lifecycle;
+pub mod mcp;
 pub mod model;
 pub mod net;
 pub mod notifications;
@@ -251,6 +253,9 @@ pub fn router(state: AppState) -> Router {
             "/notifications/channels/{id}/test",
             post(notifications::test),
         )
+        .route("/tokens", get(api_tokens::list).post(api_tokens::create))
+        .route("/tokens/{id}", axum::routing::delete(api_tokens::revoke))
+        .route("/mcp", post(mcp::endpoint).get(mcp::get_not_allowed))
         .route("/import/existing", post(library::import_existing))
         .route(
             "/items/{id}/highlights",
