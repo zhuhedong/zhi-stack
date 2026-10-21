@@ -2920,3 +2920,48 @@ input[type='checkbox'] {
   align-items: center;
   gap: 6px;
 }
+.credential-totp {
+  display: grid;
+  gap: 6px;
+}
+.totp-field {
+  display: grid;
+  gap: 4px;
+}
+.totp-code {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.totp-code > .mono {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.totp-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  font-size: 11px;
+  --ring: var(--color-accent);
+}
+.totp-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(var(--ring) var(--fill), var(--color-border) 0);
+  mask: radial-gradient(circle, transparent 0 11px, #000 12px);
+}
+.totp-ring.expiring {
+  --ring: #ef4444;
+}
+.totp-secret {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.totp-editor {
+  margin: 8px 0;
+}

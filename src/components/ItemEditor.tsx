@@ -1,6 +1,7 @@
 import { ProjectInput } from './ProjectInput';
 import { Select } from './ui/Select';
 import { Form } from './Form';
+import { TotpEditor } from './TotpEditor';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle, Plus, Trash2 } from 'lucide-react';
 import { usePersistentDraft } from '../lib/usePersistentDraft';
@@ -381,6 +382,17 @@ export function ItemEditor({
                     添加属性
                   </button>
                 </div>
+                {form.category !== 'http' && (
+                  <TotpEditor
+                    value={form.data.fields?.totp}
+                    onChange={(totp) => {
+                      const fields = { ...form.data.fields };
+                      if (totp === undefined) delete fields.totp;
+                      else fields.totp = totp;
+                      data({ fields });
+                    }}
+                  />
+                )}
                 {form.category === 'http' && (
                   <label>
                     导入 OpenAPI 规范（可选，JSON / YAML）

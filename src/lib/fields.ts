@@ -13,6 +13,7 @@ export const fieldNames: Record<string, string> = {
   privateKey: 'SSH 私钥',
   url: '登录地址',
   notes: '备注',
+  totp: '两步验证 (TOTP)',
 };
 export const secretField = (key: string) =>
-  /password|secret|token|api[-_]?key|private[-_]?key|authorization|cookie/i.test(key);
+  /password|secret|token|totp|api[-_]?key|private[-_]?key|authorization|cookie/i.test(key);
