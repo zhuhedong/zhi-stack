@@ -47,6 +47,8 @@ const TABLES: &[&str] = &[
     "ingest_jobs",
     "repo_subscriptions",
     "repo_checks",
+    "feeds",
+    "feed_entries",
     "workbench_preferences",
     "usage_events",
     "feedback",
@@ -645,6 +647,9 @@ async fn load_backup(state: &AppState, path: &std::path::Path, password: String)
         .execute(&mut *tx)
         .await?;
     sqlx::query("UPDATE repo_subscriptions SET checking=false WHERE checking")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE feeds SET checking=false WHERE checking")
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;

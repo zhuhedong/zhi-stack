@@ -1,3 +1,4 @@
+import { FeedManager } from './FeedManager';
 import { formatDateTime } from '../lib/format';
 import { useEffect, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
@@ -100,10 +101,15 @@ export function TaskCenter({
         <button className={tab === 'updates' ? 'active' : ''} onClick={() => setTab('updates')}>
           仓库更新 {subscriptions.filter((s) => s.unread).length || ''}
         </button>
+        <button className={tab === 'feeds' ? 'active' : ''} onClick={() => setTab('feeds')}>
+          RSS 订阅
+        </button>
         <button onClick={() => setTick((v) => v + 1)}>刷新</button>
       </div>
       <div className="modal-body maintenance-body">
-        {tab === 'jobs' ? (
+        {tab === 'feeds' ? (
+          <FeedManager onChanged={onChanged} />
+        ) : tab === 'jobs' ? (
           <>
             <p className="muted">
               关闭窗口后任务会继续。服务重启后公开文章和仓库会自动恢复；自动识别和 OpenAPI
