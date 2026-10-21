@@ -2965,3 +2965,47 @@ input[type='checkbox'] {
 .totp-editor {
   margin: 8px 0;
 }
+.password-generator {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+.generated-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.generated-value code {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--color-raised);
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.generator-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+.strength.s0,
+.strength.s1 {
+  color: #dc2626;
+}
+.strength.s2 {
+  color: #d97706;
+}
+.strength.s3,
+.strength.s4 {
+  color: #16a34a;
+}
+.health-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-weight: 600;
+}
