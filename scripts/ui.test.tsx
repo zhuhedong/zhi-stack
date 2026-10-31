@@ -9,6 +9,7 @@ import { AuthScreen } from '../src/components/AuthScreen';
 import { ItemEditor } from '../src/components/ItemEditor';
 import { IngestModal } from '../src/components/IngestModal';
 import { RepoView } from '../src/components/views/RepoView';
+import { CredentialView } from '../src/components/views/CredentialView';
 import { VersionHistory } from '../src/components/VersionHistory';
 import { Attachments } from '../src/components/Attachments';
 import { ConfirmationProvider } from '../src/components/ConfirmationProvider';
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   saveItem: vi.fn(),
   copyText: vi.fn(),
+  copySensitiveText: vi.fn(),
   downloadBlob: vi.fn(),
   exportText: vi.fn(),
   request: vi.fn(),
@@ -417,6 +419,23 @@ test('all credential presets expose the correct fields and locked forms cannot c
   expect(host.querySelector<HTMLOptionElement>('option[value="credential"]')?.disabled).toBe(true);
 });
 
+test('credential connection test reports a server-side reachability result', async () => {
+  const credential = item('credential');
+  credential.category = 'sql';
+  credential.data = { typeKey: 'postgresql', fields: { host: 'db.example', port: '5432' } };
+  mocks.api.mockImplementation(async (path: string) => {
+    if (path === '/items/credential/attachments') return [];
+    if (path === '/items/credential/connection-test') return { message: 'db.example:5432 网络可达；尚未执行数据库/SSH 登录。' };
+    return undefined;
+  });
+  await render(<CredentialView item={credential} onSaved={vi.fn()} onDirty={vi.fn()} notify={vi.fn()} />);
+  await click('测试网络连接');
+  expect(mocks.api).toHaveBeenCalledWith('/items/credential/connection-test', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+});
+
 test('new-item cancel and ingest cancel keep entered content when discard is declined', async () => {
   const close = vi.fn();
   await render(
@@ -691,6 +710,47 @@ test('attachment controls upload multipart data, download the stored name and co
   await answer('删除附件');
   expect(mocks.api).toHaveBeenLastCalledWith('/attachments/file-id', { method: 'DELETE' });
   expect(host.querySelector('.file-row')).toBeNull();
+});
+
+test('a failed multi-file attachment upload rolls back files already accepted by the server', async () => {
+  let uploads = 0;
+  const saved = { id: 'file-id', name: 'first.txt', mime: 'text/plain', size: 4 };
+  mocks.api.mockImplementation(async (path: string, options?: RequestInit) => {
+    if (path === '/items/article-id/attachments' && options?.method === 'POST') {
+      if (uploads++ === 0) return saved;
+      throw new Error('第二个文件失败');
+    }
+    if (path === '/attachments/file-id' && options?.method === 'DELETE') return undefined;
+    if (path === '/items/article-id/attachments') return [];
+    return undefined;
+  });
+  await render(<Attachments id="article-id" />);
+  const upload = host.querySelector<HTMLInputElement>('input[type=file]')!;
+  Object.defineProperty(upload, 'files', {
+    value: [
+      new File(['data'], 'first.txt', { type: 'text/plain' }),
+      new File(['data'], 'second.txt', { type: 'text/plain' }),
+    ],
+    configurable: true,
+  });
+  await act(async () => upload.dispatchEvent(new Event('change', { bubbles: true })));
+  expect(mocks.api).toHaveBeenCalledWith('/attachments/file-id', { method: 'DELETE' });
+  expect(host.querySelector('.file-row')).toBeNull();
+  expect(host.querySelector('[role=alert]')?.textContent).toContain('第二个文件失败');
+});
+
+test('supported attachment types can be previewed through the authenticated inline endpoint', async () => {
+  const file = { id: 'text-id', name: '说明.txt', mime: 'text/plain', size: 5 };
+  mocks.api.mockImplementation(async (path: string) =>
+    path === '/items/article-id/attachments' ? [file] : undefined,
+  );
+  mocks.request.mockResolvedValue({ text: async () => 'preview body' });
+  await render(<Attachments id="article-id" />);
+  await click('预览 ' + file.name);
+  expect(mocks.request).toHaveBeenCalledWith('/attachments/text-id/preview');
+  expect(host.querySelector('.attachment-preview')?.textContent).toContain('preview body');
+  await click('关闭预览');
+  expect(host.querySelector('.attachment-preview')).toBeNull();
 });
 
 test('ingestion sends selected type, project and tags and cannot close during collection', async () => {

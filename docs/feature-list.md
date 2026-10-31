@@ -99,7 +99,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 展示已归档图片和失败占位；支持关联附件。
 - 保存阅读进度、稍后读和独立批注；批注有自己的版本冲突检查及草稿恢复。
 
-登录墙、验证码、动态渲染和非 UTF-8 页面可能无法抓取。当前没有富文本编辑器或应用级离线缓存。依据：[KnowledgeView.tsx](../src/components/views/KnowledgeView.tsx)、[Markdown.tsx](../src/components/Markdown.tsx)、[ingest.rs](../server/src/ingest.rs)。
+登录墙、验证码和动态渲染页面仍无法在无浏览器执行环境中抓取；收录器会按 HTTP/meta charset 解码常见 GBK/Windows-1252 等页面，无法安全解码时才拒绝。当前没有富文本编辑器或应用级离线缓存。依据：[KnowledgeView.tsx](../src/components/views/KnowledgeView.tsx)、[Markdown.tsx](../src/components/Markdown.tsx)、[ingest.rs](../server/src/ingest.rs)。
 
 ## 9. GitHub 项目雷达与 Release
 
@@ -152,7 +152,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 命令进行 Bash 引号处理；SQL/Redis 等命令使用客户端交互输入密码。
 - REST 凭证进入接口调试工作区，其他类型显示连接工具箱与附件。
 
-命令面向 Bash/WSL。这里没有数据库连接测试、SQL 编辑器、数据表浏览器或 SSH 登录会话。依据：[CredentialView.tsx](../src/components/views/CredentialView.tsx)、[request.ts](../src/lib/request.ts)。
+命令面向 Bash/WSL。凭证页提供受 SSRF 白名单保护的网络连通性测试：HTTP 检查 HEAD 可达性，数据库/缓存/向量库/SSH 检查 TCP 握手，并明确不把端口可达当作登录成功。这里仍没有 SQL 编辑器、数据表浏览器或 SSH 交互会话。依据：[CredentialView.tsx](../src/components/views/CredentialView.tsx)、[connections.rs](../server/src/connections.rs)、[request.ts](../src/lib/request.ts)。
 
 ## 13. OpenAPI 与 Swagger 规范管理
 
@@ -164,7 +164,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 缺失引用、外部引用和不支持的版本返回错误；Swagger 2 使用声明的 Content-Type。
 - 重新同步接口规范，按方法和路径匹配已有接口，合并新定义与旧参数值。
 
-外部 `$ref` 需要先合并到单个规范；不是完整的 OpenAPI 建模、校验或规范导出平台。依据：[ingest.rs](../server/src/ingest.rs)、[routes.rs](../server/src/routes.rs)。
+URL 收录会通过同一 SSRF 防护网络层抓取并内联外部 `$ref`（限制深度与文件数量）；内联粘贴和离线保存的规范仍需先合并外部引用。这里不是完整的 OpenAPI 建模、校验或规范导出平台。依据：[ingest.rs](../server/src/ingest.rs)、[routes.rs](../server/src/routes.rs)。
 
 ## 14. 接口目录与请求参数
 
@@ -205,10 +205,11 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 三类资产均可挂载附件，REST 工作区有独立附件页签。
 - 多文件选择并依次上传，显示文件数量、名称和大小；单文件最大 10 MB。
 - 下载原始内容并保留文件名，支持中文名称；删除前确认，上传/下载期间显示忙碌状态。
+- 对图片、PDF、纯文本和 JSON 提供鉴权内嵌预览；不支持的类型仍只提供下载。
 - 凭证附件先加密再存入服务器磁盘或 Cloudflare R2，PG 只保存文件信息和位置；金库锁定后禁止列举、上传、下载和删除。
 - 资产移入回收站时保留附件，永久删除后清理；普通文章和仓库附件不受金库锁定影响。
 
-尚无附件预览、备注编辑、文件夹管理、全文索引或直接调用本地程序打开附件。多文件上传不是整体事务，前面已上传成功的文件会保留。依据：[Attachments.tsx](../src/components/Attachments.tsx)、[routes.rs](../server/src/routes.rs)。
+尚无附件备注编辑、文件夹管理、全文索引或直接调用本地程序打开附件。图片/PDF/文本/JSON 已支持鉴权预览；多文件选择按批次处理，后续文件失败时会自动删除本批次已上传的文件，回滚失败会明确提示检查附件列表。依据：[Attachments.tsx](../src/components/Attachments.tsx)、[routes.rs](../server/src/routes.rs)。
 
 ## 18. 文章图片与媒体归档
 
@@ -228,7 +229,7 @@ InfoHub 是个人单用户开发者工作台。业务资产分为知识文章、
 - 下载附件、HTTP 文本响应 `.txt`、二进制响应 `.bin`。
 - 下载生成的临时 Blob URL 在使用后释放。
 
-完整工作台可导出加密 `.infohub` 备份，恢复到空实例或在校验身份并明确确认后替换已有实例。不是明文凭证导出或 OpenAPI 规范导出。复制仅写入系统剪贴板，没有“30 秒后自动清除”的实际实现。依据：[DataManager.tsx](../src/components/DataManager.tsx)、[backup.rs](../server/src/backup.rs)。
+完整工作台可导出加密 `.infohub` 备份，恢复到空实例或在校验身份并明确确认后替换已有实例。不是明文凭证导出或 OpenAPI 规范导出。凭证字段、连接命令和完整 cURL 复制后会在 30 秒后仅当剪贴板仍是原文时自动清除；普通标题、链接和工作区路径复制不清除。依据：[DataManager.tsx](../src/components/DataManager.tsx)、[api.ts](../src/lib/api.ts)、[backup.rs](../server/src/backup.rs)。
 
 ## 20. 草稿、冲突处理与操作反馈
 
@@ -360,7 +361,7 @@ Windows 发布流程生成 release EXE、NSIS 安装器、独立服务端、前�
 
 | 原型或容易混淆的名称   | 当前实际情况                                                   |
 | ---------------------- | -------------------------------------------------------------- |
-| “复制后 30 秒自动清除” | 原型有此提示；正式代码只复制，未实现自动清除                   |
+| “复制后 30 秒自动清除” | 仅敏感凭证、连接命令和 cURL 生效；30 秒后仅当剪贴板仍是原文时清除 |
 | 附件“在本地打开”       | 原型为提示操作；正式版提供下载，未调用系统程序打开附件         |
 | “GitHub 项目雷达”      | 仓库资料、手动同步、定时订阅和工作台未读提示；没有外部推送      |
 | “离线阅读”             | 正文在 PG、图片在服务端磁盘/R2；服务端不可用时没有本地缓存阅读 |

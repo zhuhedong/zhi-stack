@@ -1,6 +1,7 @@
 pub mod api_history;
 pub mod auth;
 pub mod backup;
+pub mod connections;
 pub mod crypto;
 pub mod error;
 pub mod files;
@@ -130,6 +131,7 @@ pub fn router(state: AppState) -> Router {
             get(projects::state).put(projects::update_state),
         )
         .route("/items/{id}/visit", post(projects::visit))
+        .route("/items/{id}/connection-test", post(connections::test))
         .route(
             "/items/{id}",
             get(routes::detail)
@@ -162,6 +164,7 @@ pub fn router(state: AppState) -> Router {
             "/attachments/{id}",
             get(routes::download).delete(routes::delete_attachment),
         )
+        .route("/attachments/{id}/preview", get(routes::preview))
         .route("/media/{id}", get(routes::media))
         .route("/ingest", post(routes::ingest))
         .route("/jobs", get(jobs::list).post(jobs::create))

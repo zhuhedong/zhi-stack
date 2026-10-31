@@ -901,23 +901,8 @@ pub async fn download(
     Extension(auth): Extension<Auth>,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    let (name, storage_key, encrypted): (String, String, bool) =
-        sqlx::query_as("SELECT name,storage_key,encrypted FROM attachments WHERE id=$1")
-            .bind(id)
-            .fetch_one(&state.db)
-            .await?;
-    if encrypted {
-        auth.vault()?;
-    }
-    let content = files::read(&state.db, &state.storage, &storage_key).await?;
-    let bytes = if encrypted {
-        crypto::decrypt(auth.vault()?, &content, &format!("attachment:{id}"))?.to_vec()
-    } else {
-        content
-    };
-    let encoded: String = url::form_urlencoded::byte_serialize(name.as_bytes())
-        .collect::<String>()
-        .replace('+', "%20");
+    let (name, _mime, bytes) = read_attachment(&state, &auth, id).await?;
+    let encoded = encoded_filename(&name);
     let mut response = Response::new(Body::from(bytes));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -931,6 +916,69 @@ pub async fn download(
         .map_err(|_| AppError::bad("文件名无效"))?,
     );
     Ok(response)
+}
+
+pub async fn preview(
+    State(state): State<AppState>,
+    Extension(auth): Extension<Auth>,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    let (name, mime, bytes) = read_attachment(&state, &auth, id).await?;
+    let safe_mime = if mime.starts_with("image/")
+        && ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(&mime.as_str())
+        || mime.starts_with("text/")
+        || ["application/json", "application/pdf"].contains(&mime.as_str())
+    {
+        mime
+    } else {
+        "application/octet-stream".into()
+    };
+    let mut response = Response::new(Body::from(bytes));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_str(&safe_mime).map_err(|_| AppError::bad("附件类型无效"))?,
+    );
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!(
+            "inline; filename*=UTF-8''{}",
+            encoded_filename(&name)
+        ))
+        .map_err(|_| AppError::bad("文件名无效"))?,
+    );
+    response.headers_mut().insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    Ok(response)
+}
+
+fn encoded_filename(name: &str) -> String {
+    url::form_urlencoded::byte_serialize(name.as_bytes())
+        .collect::<String>()
+        .replace('+', "%20")
+}
+
+async fn read_attachment(
+    state: &AppState,
+    auth: &Auth,
+    id: Uuid,
+) -> Result<(String, String, Vec<u8>)> {
+    let (name, mime, storage_key, encrypted): (String, String, String, bool) =
+        sqlx::query_as("SELECT name,mime,storage_key,encrypted FROM attachments WHERE id=$1")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await?;
+    if encrypted {
+        auth.vault()?;
+    }
+    let content = files::read(&state.db, &state.storage, &storage_key).await?;
+    let bytes = if encrypted {
+        crypto::decrypt(auth.vault()?, &content, &format!("attachment:{id}"))?.to_vec()
+    } else {
+        content
+    };
+    Ok((name, mime, bytes))
 }
 pub async fn delete_attachment(
     State(state): State<AppState>,

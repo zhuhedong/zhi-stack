@@ -8,9 +8,11 @@ aes-gcm = "0.10"
 argon2 = "0.5"
 async_zip = { version = "0.0.17", default-features = false }
 axum = { version = "0.8", features = ["multipart"] }
+async-recursion = "1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
+encoding_rs = "0.8"
 futures-util = "0.3"
 hex = "0.4"
 html2md = "0.2"

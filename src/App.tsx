@@ -84,6 +84,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileDetail, setMobileDetail] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const lockEpochRef = useRef(0);
   const dirtyRef = useRef(false);
   const modalDraftRef = useRef<{ dirty: boolean; kind?: Pillar }>({ dirty: false });
   const unlockedRef = useRef(true);
@@ -128,7 +129,14 @@ function App() {
   const lockUi = useCallback(() => {
     if (!unlockedRef.current) return;
     unlockedRef.current = false;
+    lockEpochRef.current += 1;
     setUnlocked(false);
+    // Remove the previous result set immediately. The next locked list load
+    // may still expose credential metadata, but it must not leave a stale
+    // encrypted-content match or an old private search result on screen.
+    setResult({ items: [], total: 0, dimensions: [], unlocked: false });
+    setListError('');
+    setDetailError('');
     setItem((v) => (v?.kind === 'credential' ? null : v));
     if (modalDraftRef.current.kind === 'credential') {
       modalDraftRef.current = { dirty: false };
@@ -320,6 +328,7 @@ function App() {
   useEffect(() => {
     if (!authenticated) return;
     const abort = new AbortController();
+    const requestEpoch = lockEpochRef.current;
     const scope = [
       pillar,
       category,
@@ -358,7 +367,7 @@ function App() {
           value = await api<ListResult>('/items?' + params, { signal: abort.signal });
           items.push(...value.items);
         } while (items.length < limit && items.length < value.total && value.items.length > 0);
-        if (!abort.signal.aborted) {
+        if (!abort.signal.aborted && requestEpoch === lockEpochRef.current) {
           setResult({ ...value, items });
           if (!value.unlocked) lockUi();
         }
@@ -419,6 +428,7 @@ function App() {
   }, [authenticated]);
   useEffect(() => {
     const abort = new AbortController();
+    const requestEpoch = lockEpochRef.current;
     async function load() {
       if (!authenticated || !selected || !canReadSelected) {
         setItem(null);
@@ -430,7 +440,7 @@ function App() {
       setDetailError('');
       try {
         const value = await api<Item>('/items/' + selected.id, { signal: abort.signal });
-        if (!abort.signal.aborted) setItem(value);
+        if (!abort.signal.aborted && requestEpoch === lockEpochRef.current) setItem(value);
       } catch (e) {
         if (!abort.signal.aborted) setDetailError(errorMessage(e));
       } finally {

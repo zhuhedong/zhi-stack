@@ -87,6 +87,20 @@ export const errorMessage = (error: unknown) => (error instanceof Error ? error.
 export async function copyText(text: string) {
   await navigator.clipboard.writeText(text);
 }
+let clipboardClearGeneration = 0;
+/** Copy a secret and clear it later if the clipboard still contains this value. */
+export async function copySensitiveText(text: string, clearAfterMs = 30_000) {
+  await navigator.clipboard.writeText(text);
+  const generation = ++clipboardClearGeneration;
+  window.setTimeout(async () => {
+    if (generation !== clipboardClearGeneration) return;
+    try {
+      if ((await navigator.clipboard.readText()) === text) await navigator.clipboard.writeText('');
+    } catch {
+      // Clipboard read permission is optional. Never turn a successful copy into an error.
+    }
+  }, clearAfterMs);
+}
 export function downloadBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

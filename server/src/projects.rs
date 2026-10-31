@@ -108,7 +108,7 @@ pub async fn relations(
     Extension(auth): Extension<Auth>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
-    lifecycle::check(&state, &auth, id).await?;
+    check_live(&state, &auth, id).await?;
     let rows:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('sourceId',r.source_id,'targetId',r.target_id,'label',r.label,'id',i.id,'kind',i.kind,'title',i.title,'project',i.project) FROM item_relations r JOIN items i ON i.id=CASE WHEN r.source_id=$1 THEN r.target_id ELSE r.source_id END WHERE (r.source_id=$1 OR r.target_id=$1) AND i.deleted_at IS NULL ORDER BY r.created_at DESC").bind(id).fetch_all(&state.db).await?;
     Ok(Json(json!(rows)))
 }
@@ -124,8 +124,8 @@ pub async fn link(
     Path(id): Path<Uuid>,
     Json(input): Json<RelationInput>,
 ) -> Result<StatusCode> {
-    lifecycle::check(&state, &auth, id).await?;
-    lifecycle::check(&state, &auth, input.target_id).await?;
+    check_live(&state, &auth, id).await?;
+    check_live(&state, &auth, input.target_id).await?;
     if id == input.target_id || input.label.trim().is_empty() || input.label.chars().count() > 100 {
         return Err(AppError::bad("请选择其他资产，关联说明需要 1–100 字"));
     }
@@ -137,10 +137,25 @@ pub async fn unlink(
     Extension(auth): Extension<Auth>,
     Path((id, target)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode> {
-    lifecycle::check(&state, &auth, id).await?;
-    lifecycle::check(&state, &auth, target).await?;
+    check_live(&state, &auth, id).await?;
+    check_live(&state, &auth, target).await?;
     sqlx::query("DELETE FROM item_relations WHERE (source_id=$1 AND target_id=$2) OR (source_id=$2 AND target_id=$1)").bind(id).bind(target).execute(&state.db).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn check_live(state: &AppState, auth: &Auth, id: Uuid) -> Result<()> {
+    let (kind, live): (String, bool) =
+        sqlx::query_as("SELECT kind,deleted_at IS NULL FROM items WHERE id=$1")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await?;
+    if !live {
+        return Err(sqlx::Error::RowNotFound.into());
+    }
+    if kind == "credential" {
+        auth.vault()?;
+    }
+    Ok(())
 }
 pub async fn state(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Json<Value>> {
     let exists: bool =

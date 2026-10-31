@@ -9,6 +9,7 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     time::Duration,
 };
+use tokio::net::TcpStream;
 use url::Url;
 
 pub const MAX_DOCUMENT: usize = 8 * 1024 * 1024;
@@ -67,6 +68,51 @@ fn is_public(ip: IpAddr) -> bool {
     }
 }
 impl Network {
+    pub async fn tcp_connect(&self, host: &str, port: u16) -> Result<()> {
+        let host = host.trim().trim_matches(['[', ']']);
+        if host.is_empty() || port == 0 {
+            return Err(AppError::bad("连接目标无效"));
+        }
+        let addresses: Vec<_> = tokio::time::timeout(
+            Duration::from_secs(10),
+            tokio::net::lookup_host((host, port)),
+        )
+        .await
+        .map_err(|_| AppError::bad("DNS 解析超时"))?
+        .map_err(|_| AppError::bad("无法解析目标主机"))?
+        .collect();
+        if addresses.is_empty() {
+            return Err(AppError::bad("目标主机没有可用地址"));
+        }
+        if !self
+            .allowed_private_hosts
+            .iter()
+            .any(|allowed| allowed.eq_ignore_ascii_case(host))
+            && addresses.iter().any(|address| !is_public(address.ip()))
+        {
+            return Err(AppError::bad(
+                "该地址属于内网或保留网段；请在服务端 ALLOWED_PRIVATE_HOSTS 中显式配置目标主机",
+            ));
+        }
+        let mut last_error = None;
+        for address in addresses {
+            match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(address)).await {
+                Ok(Ok(stream)) => {
+                    drop(stream);
+                    return Ok(());
+                }
+                Ok(Err(error)) => last_error = Some(error),
+                Err(_) => return Err(AppError::bad("连接目标超时")),
+            }
+        }
+        Err(AppError::bad(format!(
+            "无法连接目标端口：{}",
+            last_error
+                .map(|error| error.to_string())
+                .unwrap_or_else(|| "连接失败".into())
+        )))
+    }
+
     pub async fn fetch(
         &self,
         value: &str,
@@ -253,5 +299,23 @@ mod tests {
         assert!(parse_url("file:///etc/passwd").is_err());
         assert!(parse_url("https://user:pass@example.com").is_err());
         assert!(BROWSER_UA.starts_with("Mozilla/5.0"));
+    }
+
+    #[tokio::test]
+    async fn tcp_connect_uses_the_explicit_private_host_allowlist() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let network = Network {
+            allowed_private_hosts: vec!["127.0.0.1".into()],
+        };
+        let accept = tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
+        network.tcp_connect("127.0.0.1", port).await.unwrap();
+        accept.await.unwrap();
+        let blocked = Network::default();
+        assert!(blocked.tcp_connect("127.0.0.1", port).await.is_err());
     }
 }

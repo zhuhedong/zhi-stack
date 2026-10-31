@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Copy, Eye, EyeOff, LockKeyhole, Terminal } from 'lucide-react';
+import { Copy, Eye, EyeOff, LoaderCircle, LockKeyhole, Terminal, TestTube } from 'lucide-react';
 import type { Item } from '../../types';
-import { copyText, errorMessage } from '../../lib/api';
+import { api, copySensitiveText, errorMessage } from '../../lib/api';
 import { connectionCommand } from '../../lib/request';
 import { ApiWorkbench } from '../ApiWorkbench';
 import { Attachments } from '../Attachments';
@@ -19,12 +19,28 @@ export function CredentialView({
 }) {
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
+  const [testing, setTesting] = useState(false);
   async function copy(text: string, label: string) {
     try {
-      await copyText(text);
+      await copySensitiveText(text);
       notify(label + '已复制');
     } catch (e) {
       setError(errorMessage(e));
+    }
+  }
+  async function testConnection() {
+    setTesting(true);
+    setError('');
+    try {
+      const result = await api<{ message: string }>(`/items/${item.id}/connection-test`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      notify(result.message);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setTesting(false);
     }
   }
   return (
@@ -86,6 +102,10 @@ export function CredentialView({
             ))}
           </div>
           <div className="connection-tools">
+            <button className="primary" disabled={testing} onClick={() => void testConnection()}>
+              {testing ? <LoaderCircle className="spin" size={14} /> : <TestTube size={14} />}
+              {testing ? '正在测试…' : '测试网络连接'}
+            </button>
             <button
               className="primary"
               disabled={!connectionCommand(item.data)}

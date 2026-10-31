@@ -29,14 +29,11 @@ fn snapshot(data: &Value) -> Value {
     result
 }
 fn signature(value: &Value) -> String {
-    hex::encode(Sha256::digest(
-        json!([
-            value["latestRelease"],
-            value["releaseDate"],
-            value["pushedAt"]
-        ])
-        .to_string(),
-    ))
+    // The snapshot is the user-visible update payload. Hash the complete
+    // snapshot so a changed release note or release URL is also surfaced as
+    // unread; previously only the version/date/push timestamp participated in
+    // the hash, which silently missed edits to release notes.
+    hex::encode(Sha256::digest(value.to_string().as_bytes()))
 }
 async fn check(state: &AppState, id: Uuid) -> Result<Value> {
     sqlx::query_scalar("SELECT data FROM items WHERE id=$1 AND kind='repo' AND deleted_at IS NULL")
@@ -174,6 +171,7 @@ pub async fn worker(state: AppState) {
         }
     }
 }
+
 async fn next(state: &AppState) -> Result<bool> {
     let mut tx = state.db.begin().await?;
     let row:Option<(Uuid,String,Value)>=sqlx::query_as("SELECT s.item_id,i.url,s.snapshot FROM repo_subscriptions s JOIN items i ON i.id=s.item_id WHERE s.enabled AND NOT s.checking AND s.next_check_at<=now() AND i.deleted_at IS NULL ORDER BY s.next_check_at FOR UPDATE OF s SKIP LOCKED LIMIT 1").fetch_optional(&mut *tx).await?;
@@ -217,4 +215,31 @@ async fn next(state: &AppState) -> Result<bool> {
     }
     tx.commit().await?;
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signature_changes_when_any_visible_snapshot_field_changes() {
+        let first = json!({
+            "latestRelease": "v1.0.0",
+            "releaseDate": "2026-01-01T00:00:00Z",
+            "releaseUrl": "https://example.test/releases/v1.0.0",
+            "releaseNotes": "initial",
+            "pushedAt": "2026-01-01T00:00:00Z"
+        });
+        for key in [
+            "releaseUrl",
+            "releaseNotes",
+            "latestRelease",
+            "releaseDate",
+            "pushedAt",
+        ] {
+            let mut changed = first.clone();
+            changed[key] = json!(format!("changed-{key}"));
+            assert_ne!(signature(&first), signature(&changed), "{key}");
+        }
+    }
 }

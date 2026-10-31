@@ -4,6 +4,8 @@ use crate::{
     net::parse_url,
     AppState,
 };
+use async_recursion::async_recursion;
+use encoding_rs::{Encoding, GBK};
 use reqwest::{
     header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION},
     Method,
@@ -12,6 +14,7 @@ use scraper::{Html, Selector};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use uuid::Uuid;
 
 pub struct Image {
@@ -27,6 +30,168 @@ pub struct Collected {
     pub warnings: Vec<String>,
 }
 
+fn header_value<'a>(headers: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
+}
+
+/// Decode publisher pages and specifications using their declared charset,
+/// with GBK as the safe fallback for legacy Chinese pages. Invalid bytes are
+/// rejected instead of silently replacing text with U+FFFD.
+pub(crate) fn decode_document(bytes: &[u8], headers: &HashMap<String, String>) -> Result<String> {
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return Ok(text.to_owned());
+    }
+    let content_type = header_value(headers, "content-type").unwrap_or_default();
+    let label = regex::Regex::new(r##"(?i)charset\s*=\s*[\"']?([A-Za-z0-9._-]+)"##)
+        .expect("static charset pattern")
+        .captures(content_type)
+        .and_then(|capture| capture.get(1).map(|value| value.as_str().to_owned()))
+        .or_else(|| {
+            let ascii = String::from_utf8_lossy(bytes);
+            regex::Regex::new(r##"(?i)<meta[^>]+charset\s*=\s*[\"']?([A-Za-z0-9._-]+)"##)
+                .expect("static meta charset pattern")
+                .captures(&ascii)
+                .and_then(|capture| capture.get(1).map(|value| value.as_str().to_owned()))
+        });
+    let encoding = label
+        .as_deref()
+        .and_then(|value| Encoding::for_label(value.as_bytes()))
+        .unwrap_or(GBK);
+    let (text, _, had_errors) = encoding.decode(bytes);
+    if had_errors {
+        return Err(AppError::bad(
+            "页面编码无法安全转换，请使用 UTF-8 导出文件或 Markdown 手动收录",
+        ));
+    }
+    Ok(text.into_owned())
+}
+
+const MAX_EXTERNAL_OPENAPI_DOCUMENTS: usize = 32;
+
+fn skipped_reference_payload(key: &str) -> bool {
+    matches!(key, "example" | "examples" | "default" | "enum" | "const")
+}
+
+/// Fetch and inline external OpenAPI references before the synchronous parser
+/// builds the endpoint catalog. Every external document is fetched through the
+/// same SSRF-checked network client as normal ingestion, and the small document
+/// cache prevents duplicate downloads for shared schemas.
+#[async_recursion]
+async fn expand_external_refs(
+    state: &AppState,
+    value: Value,
+    base: &url::Url,
+    cache: &mut HashMap<String, Value>,
+    stack: &mut HashSet<String>,
+    depth: usize,
+) -> Result<Value> {
+    if depth > 24 {
+        return Err(AppError::bad("OpenAPI 外部引用嵌套过深"));
+    }
+    match value {
+        Value::Object(mut fields) => {
+            if let Some(reference) = fields.get("$ref").and_then(Value::as_str) {
+                if !reference.starts_with('#') {
+                    let joined = base.join(reference).map_err(|_| {
+                        AppError::bad(format!("OpenAPI 外部引用地址无效：{reference}"))
+                    })?;
+                    parse_url(joined.as_str())?;
+                    let fragment = joined.fragment().map(str::to_owned);
+                    let mut document_url = joined.clone();
+                    document_url.set_fragment(None);
+                    let key = format!("{}#{}", document_url, fragment.as_deref().unwrap_or(""));
+                    if !stack.insert(key.clone()) {
+                        return Err(AppError::bad("OpenAPI 包含循环外部引用"));
+                    }
+                    let document = if let Some(document) = cache.get(document_url.as_str()) {
+                        document.clone()
+                    } else {
+                        if cache.len() >= MAX_EXTERNAL_OPENAPI_DOCUMENTS {
+                            return Err(AppError::bad("OpenAPI 外部引用文件过多"));
+                        }
+                        let fetched = state.network.get(document_url.as_str()).await?;
+                        let text = decode_document(&fetched.bytes, &fetched.headers)?;
+                        let document = serde_yaml::from_str::<Value>(&text)
+                            .map_err(|_| AppError::bad("OpenAPI 外部引用不是有效 JSON/YAML"))?;
+                        let mut final_url = fetched.url;
+                        final_url.set_fragment(None);
+                        cache.insert(final_url.to_string(), document.clone());
+                        document
+                    };
+                    let target = match fragment.as_deref() {
+                        None | Some("") => document.clone(),
+                        Some(pointer) => document.pointer(pointer).cloned().ok_or_else(|| {
+                            AppError::bad(format!("无法解析 OpenAPI 外部引用：{reference}"))
+                        })?,
+                    };
+                    let mut expanded =
+                        expand_external_refs(state, target, &document_url, cache, stack, depth + 1)
+                            .await?;
+                    fields.remove("$ref");
+                    let Value::Object(target_fields) = &mut expanded else {
+                        if fields.is_empty() {
+                            stack.remove(&key);
+                            return Ok(expanded);
+                        }
+                        return Err(AppError::bad("OpenAPI 外部引用不能合并局部字段"));
+                    };
+                    for (key, child) in fields {
+                        target_fields.insert(
+                            key.clone(),
+                            if skipped_reference_payload(&key) {
+                                child
+                            } else {
+                                expand_external_refs(state, child, base, cache, stack, depth + 1)
+                                    .await?
+                            },
+                        );
+                    }
+                    stack.remove(&key);
+                    return Ok(expanded);
+                }
+            }
+            let mut result = serde_json::Map::new();
+            for (key, child) in fields {
+                let child = if skipped_reference_payload(&key) {
+                    child
+                } else {
+                    expand_external_refs(state, child, base, cache, stack, depth + 1).await?
+                };
+                result.insert(key, child);
+            }
+            Ok(result.into())
+        }
+        Value::Array(values) => {
+            let mut result = Vec::with_capacity(values.len());
+            for child in values {
+                result
+                    .push(expand_external_refs(state, child, base, cache, stack, depth + 1).await?);
+            }
+            Ok(result.into())
+        }
+        other => Ok(other),
+    }
+}
+
+async fn openapi_from_document(
+    state: &AppState,
+    document: Value,
+    source: &str,
+) -> Result<ItemInput> {
+    if document.to_string().contains("\"$ref\"") || document.to_string().contains("'$ref'") {
+        let base = parse_url(source)?;
+        let mut cache = HashMap::new();
+        let mut stack = HashSet::new();
+        let document =
+            expand_external_refs(state, document, &base, &mut cache, &mut stack, 0).await?;
+        return openapi(&document, source);
+    }
+    openapi(&document, source)
+}
+
 pub async fn collect(state: &AppState, url: &str, kind: &str) -> Result<Collected> {
     if !["", "knowledge", "repo", "credential"].contains(&kind) {
         return Err(AppError::bad("未知收录类型"));
@@ -37,9 +202,7 @@ pub async fn collect(state: &AppState, url: &str, kind: &str) -> Result<Collecte
         return github(state, &url).await;
     }
     let fetched = state.network.get(&url).await?;
-    let text = String::from_utf8(fetched.bytes).map_err(|_| {
-        AppError::bad("页面不是 UTF-8 文本，请使用 UTF-8 导出文件或 Markdown 手动收录")
-    })?;
+    let text = decode_document(&fetched.bytes, &fetched.headers)?;
     let document: Option<Value> = serde_json::from_str(&text)
         .ok()
         .or_else(|| serde_yaml::from_str(&text).ok());
@@ -49,7 +212,7 @@ pub async fn collect(state: &AppState, url: &str, kind: &str) -> Result<Collecte
             .is_some_and(|v| v.get("openapi").is_some() || v.get("swagger").is_some())
     {
         return Ok(Collected {
-            input: openapi(document.as_ref().unwrap(), fetched.url.as_str())?,
+            input: openapi_from_document(state, document.unwrap(), fetched.url.as_str()).await?,
             images: vec![],
             warnings: vec![],
         });
@@ -248,29 +411,40 @@ async fn discover_swagger(
         .into_iter()
         .take(8)
     {
-        if let Ok(f) = state.network.get(&candidate).await {
-            if let Ok(doc) = serde_yaml::from_slice::<Value>(&f.bytes) {
-                if doc.get("openapi").is_some() || doc.get("swagger").is_some() {
-                    return Ok(Some(Collected {
-                        input: openapi(&doc, f.url.as_str())?,
-                        images: vec![],
-                        warnings: vec![],
-                    }));
-                }
-                if let Some(spec_url) = doc["url"].as_str().and_then(|u| f.url.join(u).ok()) {
-                    if let Ok(spec) = state.network.get(spec_url.as_str()).await {
-                        if let Ok(doc) = serde_yaml::from_slice::<Value>(&spec.bytes) {
-                            if let Ok(input) = openapi(&doc, spec.url.as_str()) {
-                                return Ok(Some(Collected {
-                                    input,
-                                    images: vec![],
-                                    warnings: vec![],
-                                }));
-                            }
-                        }
-                    }
-                }
-            }
+        let Ok(f) = state.network.get(&candidate).await else {
+            continue;
+        };
+        let Ok(text) = decode_document(&f.bytes, &f.headers) else {
+            continue;
+        };
+        let Ok(doc) = serde_yaml::from_str::<Value>(&text) else {
+            continue;
+        };
+        if doc.get("openapi").is_some() || doc.get("swagger").is_some() {
+            return Ok(Some(Collected {
+                input: openapi_from_document(state, doc, f.url.as_str()).await?,
+                images: vec![],
+                warnings: vec![],
+            }));
+        }
+        let Some(spec_url) = doc["url"].as_str().and_then(|u| f.url.join(u).ok()) else {
+            continue;
+        };
+        let Ok(spec) = state.network.get(spec_url.as_str()).await else {
+            continue;
+        };
+        let Ok(text) = decode_document(&spec.bytes, &spec.headers) else {
+            continue;
+        };
+        let Ok(doc) = serde_yaml::from_str::<Value>(&text) else {
+            continue;
+        };
+        if let Ok(input) = openapi_from_document(state, doc, spec.url.as_str()).await {
+            return Ok(Some(Collected {
+                input,
+                images: vec![],
+                warnings: vec![],
+            }));
         }
     }
     Ok(None)
@@ -982,6 +1156,16 @@ pub fn openapi(doc: &Value, source: &str) -> Result<ItemInput> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn document_decoder_honors_charset_and_rejects_unknown_bytes() {
+        let gbk = b"\xD6\xD0\xCE\xC4";
+        let mut headers = HashMap::new();
+        headers.insert("content-type".into(), "text/html; charset=gbk".into());
+        assert_eq!(decode_document(gbk, &headers).unwrap(), "中文");
+        assert!(decode_document(&[0xff, 0xfe, 0xfd], &HashMap::new()).is_err());
+    }
     #[test]
     fn wechat_urls_drop_tracking_query_and_captcha_pages_are_blocked() {
         assert_eq!(

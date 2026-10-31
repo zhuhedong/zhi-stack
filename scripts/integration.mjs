@@ -65,13 +65,45 @@ const spec = {
     '/health': { get: { summary: '服务健康检查' } },
   },
 };
+const externalSpec = {
+  openapi: '3.0.3',
+  info: { title: '外部引用接口', version: '1.0' },
+  paths: {
+    '/external': {
+      post: {
+        requestBody: {
+          content: {
+            'application/json': { schema: { $ref: '/external-schema.json#/Order' } },
+          },
+        },
+      },
+    },
+  },
+};
 const fixture = createServer(async (req, res) => {
   if (req.url === '/openapi.json') {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(spec));
+  } else if (req.url === '/external-openapi.json') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(externalSpec));
+  } else if (req.url === '/external-schema.json') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ Order: { type: 'object', properties: { id: { type: 'integer', example: 42 } } } }));
   } else if (req.url === '/swagger-ui') {
     res.setHeader('Content-Type', 'text/html');
     res.end('<html><script>SwaggerUIBundle({url:"/openapi.json"})</script></html>');
+  } else if (req.url === '/article-gbk') {
+    res.setHeader('Content-Type', 'text/html; charset=gbk');
+    res.end(
+      Buffer.concat([
+        Buffer.from('<html><head><title>'),
+        Buffer.from([0xd6, 0xd0, 0xce, 0xc4]),
+        Buffer.from('</title></head><body><article><h1>'),
+        Buffer.from([0xd6, 0xd0, 0xce, 0xc4]),
+        Buffer.from('</h1><p>Legacy encoding article contains enough body text for the collector to recognize this as a complete article and preserve its metadata safely.</p></article></body></html>'),
+      ]),
+    );
   } else if (req.url?.startsWith('/article')) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.end(
@@ -306,6 +338,35 @@ try {
   assert.equal((await request('/items?q=private-database')).total, 1);
   pass('credential payload is encrypted in PostgreSQL; metadata lists omit secret values');
 
+  const connectivity = await request('/items', 'POST', {
+    kind: 'credential',
+    title: '网络连通性验收',
+    category: 'sql',
+    data: {
+      typeKey: 'postgresql',
+      fields: { host: '127.0.0.1', port: String(fixture.address().port), database: 'infohub' },
+    },
+  }, 201);
+  const connectionResult = await request(
+    '/items/' + connectivity.id + '/connection-test',
+    'POST',
+    {},
+  );
+  assert.equal(connectionResult.ok, true);
+  assert.equal(connectionResult.port, fixture.address().port);
+  assert.match(connectionResult.message, /尚未执行数据库\/SSH 登录/);
+  pass('credential TCP connectivity test uses the private-host allowlist and does not claim authentication');
+  const account = await request('/items', 'POST', {
+    kind: 'credential',
+    title: 'HTTP 账号连通性验收',
+    category: 'account',
+    data: { typeKey: 'account', fields: { url: fixtureUrl + '/health' } },
+  }, 201);
+  const accountResult = await request('/items/' + account.id + '/connection-test', 'POST', {});
+  assert.equal(accountResult.ok, true);
+  assert.equal(accountResult.status, 200);
+  pass('HTTP/account credential connectivity test handles URL-only credentials');
+
   const form = new FormData();
   form.append('file', new Blob(['attachment-private-content'], { type: 'application/pdf' }), '接口说明.pdf');
   const attachment = await request('/items/' + credential.id + '/attachments', 'POST', form, 201);
@@ -314,6 +375,11 @@ try {
   });
   assert.equal(await download.text(), 'attachment-private-content');
   assert.match(download.headers.get('content-disposition'), /filename\*=UTF-8/);
+  const attachmentPreview = await fetch(base + '/attachments/' + attachment.id + '/preview', {
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  assert.equal(attachmentPreview.headers.get('content-type'), 'application/pdf');
+  assert.match(attachmentPreview.headers.get('content-disposition'), /^inline;/);
   const storedAttachment = (
     await db.query('SELECT storage_key, encrypted FROM attachments WHERE id=$1', [attachment.id])
   ).rows[0];
@@ -359,6 +425,10 @@ try {
   });
   assert.deepEqual(Buffer.from(await mediaResponse.arrayBuffer()), png);
   assert.equal((await fetch(base + '/media/' + media.id)).status, 401);
+  const legacy = await request('/ingest', 'POST', { url: fixtureUrl + '/article-gbk', kind: 'knowledge' }, 201);
+  assert.equal(legacy.item.title, '中文');
+  assert.match(legacy.item.data.content, /中文/);
+  pass('legacy GBK article decoding honors the declared charset');
   articleVersion = 2;
   const refreshedArticle = await request('/items/' + archived.item.id + '/refresh', 'POST');
   assert.deepEqual(fileRead(media.storage_key), png);
@@ -380,6 +450,11 @@ try {
   ).item;
   assert.equal(apiItem.data.swaggerEndpoints.length, 2);
   assert.equal(apiItem.data.swaggerEndpoints[0].pathParams[0].value, 'order-1001');
+  const externalApi = (
+    await request('/ingest', 'POST', { url: fixtureUrl + '/external-openapi.json', kind: 'credential' }, 201)
+  ).item;
+  assert.equal(externalApi.data.swaggerEndpoints[0].requestBody, '{\n  "id": 42\n}');
+  pass('OpenAPI URL ingestion resolves same-origin external $ref documents');
   apiItem.data.globalHeaders = [{ key: 'Authorization', value: 'Bearer fixture-only', enabled: true }];
   apiItem.data.fields.customSecret = 'custom-connection-value';
   apiItem.data.description = '用户填写的服务备注';
@@ -817,7 +892,7 @@ try {
           .n === 0,
       'Disk garbage queue did not drain',
     );
-    assert.equal(existsSync(staging), false);
+    await waitFor(() => !existsSync(staging), 'Interrupted atomic-write staging file was not cleaned');
     assert.equal(
       (await db.query('SELECT count(*)::int AS n FROM file_objects WHERE delete_after IS NOT NULL')).rows[0]
         .n,

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Braces, Check, Copy, Download, LoaderCircle, Plus, Save, Send, Trash2 } from 'lucide-react';
 import type { Endpoint, Item, ItemData } from '../types';
 import { sizeLabel } from '../types';
-import { copyText, downloadBlob, errorMessage, exportText, saveItem } from '../lib/api';
+import { copySensitiveText, downloadBlob, errorMessage, exportText, saveItem } from '../lib/api';
 import { buildCurl, buildRequest, emptyEndpoint, endpointPath, mergeHeaders } from '../lib/request';
 import { PairEditor } from './PairEditor';
 import { Attachments } from './Attachments';
@@ -104,7 +104,7 @@ export function ApiWorkbench({
   }
   async function copy() {
     try {
-      await copyText(curl);
+      await copySensitiveText(curl);
       notify('cURL 命令已复制（适用于 Bash / WSL）');
     } catch (e) {
       setError(errorMessage(e));
